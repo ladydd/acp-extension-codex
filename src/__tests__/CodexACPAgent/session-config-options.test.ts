@@ -12,13 +12,14 @@ import {PLAN_MODE_CONFIG_ID} from "../../PlanModeConfig";
 const lowEffort: ReasoningEffortOption = {reasoningEffort: "low", description: "Fast"};
 const mediumEffort: ReasoningEffortOption = {reasoningEffort: "medium", description: "Balanced"};
 const highEffort: ReasoningEffortOption = {reasoningEffort: "high", description: "Thorough"};
+const xhighEffort: ReasoningEffortOption = {reasoningEffort: "xhigh", description: "Extra thorough"};
 
 function buildModels(): {fast: Model; slow: Model} {
     const fast = createTestModel({
         id: "fast-model",
         displayName: "Fast model",
         description: "Frontier",
-        supportedReasoningEfforts: [lowEffort, mediumEffort, highEffort],
+        supportedReasoningEfforts: [lowEffort, mediumEffort, highEffort, xhighEffort],
         defaultReasoningEffort: "medium",
         additionalSpeedTiers: ["fast"],
     });
@@ -78,6 +79,7 @@ describe("Session config options", () => {
                 {value: "low", name: "Low"},
                 {value: "medium", name: "Medium"},
                 {value: "high", name: "High"},
+                {value: "xhigh", name: "XHigh"},
             ],
         });
 
@@ -129,6 +131,7 @@ describe("Session config options", () => {
             "fast-model[low]",
             "fast-model[medium]",
             "fast-model[high]",
+            "fast-model[xhigh]",
             "slow-model[low]",
             "slow-model[medium]",
         ]);

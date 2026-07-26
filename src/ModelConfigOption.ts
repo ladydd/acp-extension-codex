@@ -9,6 +9,20 @@ function capitalize(value: string): string {
     return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+/** Display names for known efforts; naive capitalization would render "xhigh" as "Xhigh". */
+const REASONING_EFFORT_DISPLAY_NAMES: Record<string, string> = {
+    low: "Low",
+    medium: "Medium",
+    high: "High",
+    xhigh: "XHigh",
+    max: "Max",
+    ultra: "Ultra",
+};
+
+function reasoningEffortDisplayName(effort: string): string {
+    return REASONING_EFFORT_DISPLAY_NAMES[effort] ?? capitalize(effort);
+}
+
 export function findSupportedEffort(
     options: ReadonlyArray<ReasoningEffortOption>,
     effort: string | undefined,
@@ -55,7 +69,7 @@ export function createReasoningEffortConfigOption(
         currentValue: currentEffort,
         options: supportedReasoningEfforts.map(option => ({
             value: option.reasoningEffort,
-            name: capitalize(option.reasoningEffort),
+            name: reasoningEffortDisplayName(option.reasoningEffort),
             description: option.description,
         })),
     };
