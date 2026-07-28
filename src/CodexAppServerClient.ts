@@ -83,6 +83,14 @@ export interface ElicitationHandler {
     handleUserInput(params: ToolRequestUserInputParams): Promise<ToolRequestUserInputResponse>;
 }
 
+type ExperimentalThreadForkParams = ThreadForkParams & {
+    /**
+     * Skip reconstructing turns in the response while preserving them in the
+     * forked thread. Requires the experimental app-server API enabled at initialization.
+     */
+    excludeTurns?: boolean;
+};
+
 export type McpStartupFailure = {
     server: string;
     error: string;
@@ -522,7 +530,7 @@ export class CodexAppServerClient {
         return await this.sendRequest({ method: "thread/resume", params: params });
     }
 
-    async threadFork(params: ThreadForkParams): Promise<ThreadForkResponse> {
+    async threadFork(params: ExperimentalThreadForkParams): Promise<ThreadForkResponse> {
         return await this.sendRequest({ method: "thread/fork", params: params });
     }
 
