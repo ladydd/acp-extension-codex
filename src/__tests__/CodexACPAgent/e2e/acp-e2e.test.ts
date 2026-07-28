@@ -30,6 +30,33 @@ describeE2E("E2E tests", () => {
         });
     });
 
+    it("forks a session and continues from the copied Codex history", async () => {
+        fixture = await createAuthenticatedFixture();
+        const source = await fixture.createSession();
+        await fixture.expectPromptText(
+            source.sessionId,
+            "Remember the exact marker fork-history-ok and reply with exactly remembered.",
+            (text) => {
+                expect(text.toLowerCase()).toContain("remembered");
+            },
+        );
+
+        const forked = await fixture.connection.unstable_forkSession({
+            sessionId: source.sessionId,
+            cwd: fixture.workspaceDir,
+            mcpServers: [],
+        });
+
+        expect(forked.sessionId).not.toBe(source.sessionId);
+        await fixture.expectPromptText(
+            forked.sessionId,
+            "Reply with only the exact marker I asked you to remember.",
+            (text) => {
+                expect(text.toLowerCase()).toContain("fork-history-ok");
+            },
+        );
+    });
+
     it("returns model response when authenticated via gateway", async () => {
         const apiKey = requireLiveApiKey();
         fixture = await createGatewayFixture("https://api.openai.com/v1", {Authorization: `Bearer ${apiKey}`});

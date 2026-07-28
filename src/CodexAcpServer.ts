@@ -125,6 +125,18 @@ interface ActiveAuthState {
     authConfigured: boolean;
 }
 
+type SessionOpenOperation =
+    | { kind: "new"; request: acp.NewSessionRequest }
+    | { kind: "resume"; request: acp.ResumeSessionRequest }
+    | { kind: "fork"; request: acp.ForkSessionRequest };
+
+type SessionOpenResult = [
+    SessionId,
+    LegacySessionModelState,
+    SessionModeState,
+    acp.AvailableCommand[],
+];
+
 interface PendingMcpStartupSession {
     requestedServers: Set<string>;
     afterVersion: number;
@@ -239,6 +251,7 @@ export class CodexAcpServer {
                 },
                 sessionCapabilities: {
                     resume: { },
+                    fork: { },
                     list: { },
                     close: { },
                     delete: { },
@@ -293,9 +306,19 @@ export class CodexAcpServer {
         }
     }
 
-    async getOrCreateSession(request: acp.NewSessionRequest | acp.ResumeSessionRequest): Promise<[SessionId, LegacySessionModelState, SessionModeState, acp.AvailableCommand[]]> {
+    async getOrCreateSession(request: acp.NewSessionRequest | acp.ResumeSessionRequest): Promise<SessionOpenResult> {
         try {
             return await this.tryCreateSession(request);
+        } catch (e) {
+            const error = e instanceof Error ? e : new Error(String(e));
+            await this.handleError(error);
+            throw e;
+        }
+    }
+
+    private async getOrForkSession(request: acp.ForkSessionRequest): Promise<SessionOpenResult> {
+        try {
+            return await this.tryOpenSession({kind: "fork", request});
         } catch (e) {
             const error = e instanceof Error ? e : new Error(String(e));
             await this.handleError(error);
@@ -374,10 +397,35 @@ export class CodexAcpServer {
         return generation;
     }
 
-    async tryCreateSession(request: acp.NewSessionRequest | acp.ResumeSessionRequest): Promise<[SessionId, LegacySessionModelState, SessionModeState, acp.AvailableCommand[]]> {
-        const requestedSessionGeneration = "sessionId" in request
-            ? this.beginSessionOpen(request.sessionId)
+    async tryCreateSession(request: acp.NewSessionRequest | acp.ResumeSessionRequest): Promise<SessionOpenResult> {
+        return await this.tryOpenSession("sessionId" in request
+            ? {kind: "resume", request}
+            : {kind: "new", request});
+    }
+
+    private async tryOpenSession(operation: SessionOpenOperation): Promise<SessionOpenResult> {
+        const {request} = operation;
+        let openedSession = operation.kind === "resume"
+            ? {
+                sessionId: operation.request.sessionId,
+                generation: this.beginSessionOpen(operation.request.sessionId),
+            }
             : null;
+        let subscribed = false;
+        const onSubscribed = (reportedSessionId?: string): void => {
+            const sessionId = reportedSessionId
+                ?? (operation.kind === "resume" ? operation.request.sessionId : null);
+            if (!sessionId) {
+                throw RequestError.internalError("Codex subscribed without reporting a session id");
+            }
+            subscribed = true;
+            if (!openedSession) {
+                openedSession = {
+                    sessionId,
+                    generation: this.beginSessionOpen(sessionId),
+                };
+            }
+        };
         await this.checkAuthorization();
         const requestedMcpServers = request.mcpServers ?? [];
         const mcpServerStartupVersion = requestedMcpServers.length > 0
@@ -385,43 +433,68 @@ export class CodexAcpServer {
             : null;
 
         let sessionMetadata: SessionMetadata;
-        let resumeSubscribed = false;
-        if ("sessionId" in request) {
-            logger.log(`Resume existing session: ${request.sessionId}...`);
-            try {
-                sessionMetadata = await this.runWithProcessCheck(() =>
-                    this.codexAcpClient.resumeSession(request, () => {
-                        resumeSubscribed = true;
-                    })
-                );
-            } catch (err) {
-                if (resumeSubscribed && requestedSessionGeneration !== null) {
-                    await this.cleanupStaleSessionOpen(request.sessionId, requestedSessionGeneration);
-                }
-                throw err;
+        try {
+            switch (operation.kind) {
+                case "new":
+                    logger.log("Create new session...");
+                    sessionMetadata = await this.runWithProcessCheck(() =>
+                        this.codexAcpClient.newSession(operation.request, onSubscribed)
+                    );
+                    break;
+                case "resume":
+                    logger.log(`Resume existing session: ${operation.request.sessionId}...`);
+                    sessionMetadata = await this.runWithProcessCheck(() =>
+                        this.codexAcpClient.resumeSession(operation.request, onSubscribed)
+                    );
+                    break;
+                case "fork":
+                    logger.log(`Fork existing session: ${operation.request.sessionId}...`);
+                    sessionMetadata = await this.runWithProcessCheck(() =>
+                        this.codexAcpClient.forkSession(operation.request, onSubscribed)
+                    );
+                    break;
             }
-        } else {
-            logger.log(`Create new session...`);
-            sessionMetadata = await this.runWithProcessCheck(() => this.codexAcpClient.newSession(request));
+        } catch (err) {
+            if (subscribed && openedSession) {
+                await this.cleanupStaleSessionOpen(openedSession.sessionId, openedSession.generation);
+            }
+            throw err;
         }
 
         const {sessionId, currentModelId, models} = sessionMetadata;
+        if (!openedSession) {
+            openedSession = {
+                sessionId,
+                generation: this.beginSessionOpen(sessionId),
+            };
+        } else if (openedSession.sessionId !== sessionId) {
+            if (subscribed) {
+                await this.cleanupStaleSessionOpen(openedSession.sessionId, openedSession.generation);
+            }
+            throw RequestError.internalError(
+                {expectedSessionId: openedSession?.sessionId, actualSessionId: sessionId},
+                "Codex opened a different session than it reported",
+            );
+        }
+        subscribed = true;
         const authProvider = sessionMetadata.modelProvider ?? this.codexAcpClient.getModelProvider();
         let authState: ActiveAuthState;
         try {
             authState = await this.getAuthStateForProvider(authProvider);
         } catch (err) {
-            if (resumeSubscribed && requestedSessionGeneration !== null) {
-                await this.cleanupStaleSessionOpen(sessionId, requestedSessionGeneration);
+            if (subscribed) {
+                await this.cleanupStaleSessionOpen(sessionId, openedSession.generation);
             }
             throw err;
         }
-        const sessionGeneration = requestedSessionGeneration ?? this.beginSessionOpen(sessionId);
-        if (!this.sessionOpenCanInstall(sessionId, sessionGeneration)) {
-            resumeSubscribed = false;
-            await this.closeStaleSessionOpen(sessionId, sessionGeneration);
+        if (!this.sessionOpenCanInstall(sessionId, openedSession.generation)) {
+            subscribed = false;
+            await this.closeStaleSessionOpen(sessionId, openedSession.generation);
         }
-        const sessionMcpServers = this.resolveSessionMcpServers(requestedMcpServers, "sessionId" in request);
+        const sessionMcpServers = this.resolveSessionMcpServers(
+            requestedMcpServers,
+            operation.kind !== "new",
+        );
         const currentModel = this.findCurrentModel(models, currentModelId);
         const currentModelSupportsFast = modelSupportsFast(currentModel);
         const sessionState: SessionState = {
@@ -448,11 +521,11 @@ export class CodexAcpServer {
             sessionMcpServers: sessionMcpServers,
             terminalOutputMode: this.terminalOutputMode,
             sessionTitle: null,
-            sessionTitleSource: "sessionId" in request ? "unknown" : "unset",
+            sessionTitleSource: operation.kind === "new" ? "unset" : "unknown",
         };
         this.sessions.set(sessionId, sessionState);
         this.publishRateLimitsAsync(sessionState);
-        resumeSubscribed = false;
+        subscribed = false;
 
         if (requestedMcpServers.length > 0 && mcpServerStartupVersion !== null) {
             this.pendingMcpStartupSessions.set(sessionId, {
@@ -572,6 +645,22 @@ export class CodexAcpServer {
             models: modelState,
             modes: modeState,
             availableCommands,
+            ...this.createSessionConfigOptionsResponse(this.getSessionState(sessionId)),
+        };
+    }
+
+    async unstable_forkSession(params: acp.ForkSessionRequest): Promise<acp.ForkSessionResponse> {
+        logger.log("Forking session...", {sessionId: params.sessionId});
+        const [sessionId, , modeState, availableCommands] = await this.getOrForkSession(params);
+        this.publishAvailableCommandsAsync(sessionId, availableCommands);
+
+        logger.log("Session forked", {
+            sourceSessionId: params.sessionId,
+            sessionId,
+        });
+        return {
+            sessionId,
+            modes: modeState,
             ...this.createSessionConfigOptionsResponse(this.getSessionState(sessionId)),
         };
     }
