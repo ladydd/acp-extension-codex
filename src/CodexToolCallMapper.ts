@@ -380,25 +380,27 @@ export function createFuzzyFileSearchComplete(
 export function createWebSearchStartUpdate(
     item: WebSearchItem
 ): UpdateSessionEvent {
+    const {results: _results, ...rawInput} = item;
     return {
         sessionUpdate: "tool_call",
         toolCallId: item.id,
         kind: "search",
         title: formatWebSearchTitle(item),
         status: "in_progress",
-        rawInput: item,
+        rawInput,
     };
 }
 
 export function createWebSearchCompleteUpdate(
     item: WebSearchItem
 ): UpdateSessionEvent {
+    const {results: _results, ...rawInput} = item;
     return {
         sessionUpdate: "tool_call_update",
         toolCallId: item.id,
         title: formatWebSearchTitle(item),
         status: "completed",
-        rawInput: item,
+        rawInput,
     };
 }
 

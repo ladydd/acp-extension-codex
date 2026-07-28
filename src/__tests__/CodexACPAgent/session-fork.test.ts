@@ -54,6 +54,7 @@ describe("ACP session fork", () => {
         expect(threadForkSpy).toHaveBeenCalledWith({
             threadId: "source-session-id",
             cwd: "/workspace",
+            excludeTurns: true,
             modelProvider: "openai",
             config: {
                 projects: {
