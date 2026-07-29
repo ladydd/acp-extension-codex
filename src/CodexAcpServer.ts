@@ -1879,7 +1879,10 @@ export class CodexAcpServer {
                 return {
                     stopReason: "end_turn",
                     usage: this.buildPromptUsage(sessionState.lastTokenUsage),
-                    _meta: this.buildQuotaMeta(sessionState),
+                    _meta: this.buildQuotaMeta(
+                        sessionState,
+                        commandResult.turnCompleted?.turn.id,
+                    ),
                 };
             }
 
@@ -1966,7 +1969,7 @@ export class CodexAcpServer {
             return {
                 stopReason: "end_turn",
                 usage: this.buildPromptUsage(sessionState.lastTokenUsage),
-                _meta: this.buildQuotaMeta(sessionState),
+                _meta: this.buildQuotaMeta(sessionState, turnCompleted.turn.id),
             };
         } catch (err) {
             logger.error(`Prompt for session ${params.sessionId} failed`, err);
@@ -2002,7 +2005,10 @@ export class CodexAcpServer {
         });
     }
 
-    private buildQuotaMeta(sessionState: SessionState): { quota: QuotaMeta } {
+    private buildQuotaMeta(
+        sessionState: SessionState,
+        forkPoint?: string,
+    ): { quota: QuotaMeta, lody?: { forkPoint: string } } {
         const lastTokenUsage = sessionState.lastTokenUsage;
 
         // Remove the "[reasoning-level]" suffix from currentModelId if present
@@ -2017,7 +2023,8 @@ export class CodexAcpServer {
             quota: {
                 token_count: sessionState.lastTokenUsage,
                 model_usage: modelUsage
-            }
+            },
+            ...(forkPoint ? {lody: {forkPoint}} : {}),
         };
     }
 
