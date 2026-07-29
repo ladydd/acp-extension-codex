@@ -23,6 +23,7 @@ import {AgentMode} from "./AgentMode";
 import path from "node:path";
 import {logger} from "./Logger";
 import {sanitizeMcpServerName} from "./McpServerName";
+import {getLodyForkPoint} from "./AcpExtensions";
 import type {
     AccountLoginCompletedNotification,
     AccountUpdatedNotification,
@@ -355,11 +356,13 @@ export class CodexAcpClient {
     ): Promise<SessionMetadata> {
         const additionalDirectories = readAdditionalDirectories(request.cwd, request.additionalDirectories, request._meta);
         await this.refreshSkills(request.cwd, additionalDirectories);
+        const forkPoint = getLodyForkPoint(request._meta);
 
         const response = await this.codexClient.threadFork({
             config: await this.createSessionConfig(request.cwd, additionalDirectories, request.mcpServers ?? []),
             cwd: request.cwd,
             excludeTurns: true,
+            ...(forkPoint ? {lastTurnId: forkPoint} : {}),
             modelProvider: await this.getResumeModelProvider(),
             threadId: request.sessionId,
         });
@@ -374,6 +377,25 @@ export class CodexAcpClient {
             currentServiceTier: response.serviceTier as ServiceTier ?? null,
             additionalDirectories,
         };
+    }
+
+    async findForkPointBeforeTurn(threadId: string, activeTurnId: string): Promise<string> {
+        const response = await this.codexClient.threadRead({
+            threadId,
+            includeTurns: true,
+        });
+        const turns = response.thread.turns;
+        const activeIndex = turns.findIndex((turn) => turn.id === activeTurnId);
+        if (activeIndex < 0) {
+            throw RequestError.invalidRequest("Active turn changed before its fork point was captured");
+        }
+        for (let index = activeIndex - 1; index >= 0; index--) {
+            const turn = turns[index];
+            if (turn && turn.status !== "inProgress") {
+                return turn.id;
+            }
+        }
+        throw RequestError.invalidRequest("No completed turn exists before the active turn");
     }
 
     async loadSession(request: acp.LoadSessionRequest, onSubscribed?: () => void): Promise<SessionMetadataWithThread> {

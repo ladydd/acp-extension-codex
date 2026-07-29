@@ -40,6 +40,11 @@ describe("ACP session fork", () => {
             cwd: "/workspace",
             additionalDirectories: ["/workspace/extra"],
             mcpServers: [mcpServer],
+            _meta: {
+                lody: {
+                    forkPoint: "completed-turn-id",
+                },
+            },
         }, subscribed);
 
         expect(result).toEqual({
@@ -53,6 +58,7 @@ describe("ACP session fork", () => {
         expect(subscribed).toHaveBeenCalledWith("child-session-id");
         expect(threadForkSpy).toHaveBeenCalledWith({
             threadId: "source-session-id",
+            lastTurnId: "completed-turn-id",
             cwd: "/workspace",
             excludeTurns: true,
             modelProvider: "openai",
@@ -74,6 +80,39 @@ describe("ACP session fork", () => {
             },
         });
         expect(threadReadSpy).not.toHaveBeenCalled();
+    });
+
+    it("resolves the last terminal Codex turn before the active turn", async () => {
+        const fixture = createCodexMockTestFixture();
+        const codexAcpClient = fixture.getCodexAcpClient();
+        const codexAppServerClient = fixture.getCodexAppServerClient();
+        vi.spyOn(codexAppServerClient, "threadRead").mockResolvedValue({
+            thread: {
+                turns: [
+                    {id: "completed-turn", status: "completed"},
+                    {id: "active-turn", status: "inProgress"},
+                ],
+            },
+        } as never);
+
+        await expect(
+            codexAcpClient.findForkPointBeforeTurn("source-session-id", "active-turn"),
+        ).resolves.toBe("completed-turn");
+    });
+
+    it("rejects when the active Codex turn changed during capture", async () => {
+        const fixture = createCodexMockTestFixture();
+        const codexAcpClient = fixture.getCodexAcpClient();
+        const codexAppServerClient = fixture.getCodexAppServerClient();
+        vi.spyOn(codexAppServerClient, "threadRead").mockResolvedValue({
+            thread: {
+                turns: [{id: "completed-turn", status: "completed"}],
+            },
+        } as never);
+
+        await expect(
+            codexAcpClient.findForkPointBeforeTurn("source-session-id", "stale-active-turn"),
+        ).rejects.toThrow("Invalid request");
     });
 
     it("installs the fork as an independent promptable ACP session", async () => {
