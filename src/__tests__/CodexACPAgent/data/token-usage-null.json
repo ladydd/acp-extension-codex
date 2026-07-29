@@ -5,9 +5,6 @@
     "quota": {
       "token_count": null,
       "model_usage": []
-    },
-    "lody": {
-      "forkPoint": "turn-id"
     }
   }
 }

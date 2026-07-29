@@ -12,15 +12,20 @@ export const ACP_EXT_SESSION_USAGE_UPDATE_METHOD = "_acp_ext:session_usage_updat
 export const ACP_EXT_SESSION_RATE_LIMITS_METHOD = "_acp_ext:session_rate_limits";
 export const ACP_EXT_CODEX_PROPOSED_PLAN_METHOD = "_acp_ext:codex_proposed_plan";
 export const CODEX_STEER_APPLIED_METHOD = "_codex/steerApplied";
-export const LODY_FORK_POINT_BEFORE_ACTIVE_TURN_METHOD =
-    "_lody/session/fork-point-before-active-turn";
+export const LODY_FORK_MESSAGE_BEFORE_ACTIVE_TURN_METHOD =
+    "_lody/session/fork-message-before-active-turn";
 
-export function getLodyForkPoint(meta: unknown): string | null {
+export function getLodyForkMessageId(meta: unknown): string | null {
     if (typeof meta !== "object" || meta === null) return null;
     const lody = (meta as Record<string, unknown>)["lody"];
     if (typeof lody !== "object" || lody === null) return null;
-    const forkPoint = (lody as Record<string, unknown>)["forkPoint"];
-    return typeof forkPoint === "string" && forkPoint.length > 0 ? forkPoint : null;
+    const forkAtMessage = (lody as Record<string, unknown>)["forkAtMessage"];
+    if (typeof forkAtMessage !== "object" || forkAtMessage === null) return null;
+    const version = (forkAtMessage as Record<string, unknown>)["version"];
+    const messageId = (forkAtMessage as Record<string, unknown>)["messageId"];
+    return version === 1 && typeof messageId === "string" && messageId.length > 0
+        ? messageId
+        : null;
 }
 
 export type CodexSteerCapability = {

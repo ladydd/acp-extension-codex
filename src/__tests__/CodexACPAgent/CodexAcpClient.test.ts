@@ -1421,9 +1421,6 @@ describe('ACP server test', { timeout: 40_000 }, () => {
         completeReview(createReviewCompletedNotification());
         await expect(promptPromise).resolves.toEqual(expect.objectContaining({
             stopReason: "end_turn",
-            _meta: expect.objectContaining({
-                lody: {forkPoint: "review-turn-id"},
-            }),
         }));
         expect(promptResolved).toBe(true);
     });

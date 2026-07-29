@@ -21,7 +21,14 @@ describe("ACP session fork", () => {
         vi.spyOn(codexAppServerClient, "skillsExtraRootsSet").mockResolvedValue(undefined);
         vi.spyOn(codexAppServerClient, "listSkills").mockResolvedValue({data: []});
         vi.spyOn(codexAppServerClient, "configRead").mockResolvedValue({config: {}} as never);
-        const threadReadSpy = vi.spyOn(codexAppServerClient, "threadRead");
+        const threadReadSpy = vi.spyOn(codexAppServerClient, "threadRead").mockResolvedValue({
+            thread: {
+                turns: [{
+                    id: "completed-turn-id",
+                    items: [{type: "agentMessage", id: "assistant-message-id"}],
+                }],
+            },
+        } as never);
         const threadForkSpy = vi.spyOn(codexAppServerClient, "threadFork").mockResolvedValue({
             thread: {id: "child-session-id"},
             model: model.id,
@@ -42,7 +49,10 @@ describe("ACP session fork", () => {
             mcpServers: [mcpServer],
             _meta: {
                 lody: {
-                    forkPoint: "completed-turn-id",
+                    forkAtMessage: {
+                        version: 1,
+                        messageId: "assistant-message-id",
+                    },
                 },
             },
         }, subscribed);
@@ -79,7 +89,10 @@ describe("ACP session fork", () => {
                 },
             },
         });
-        expect(threadReadSpy).not.toHaveBeenCalled();
+        expect(threadReadSpy).toHaveBeenCalledWith({
+            threadId: "source-session-id",
+            includeTurns: true,
+        });
     });
 
     it("resolves the last terminal Codex turn before the active turn", async () => {
@@ -89,15 +102,19 @@ describe("ACP session fork", () => {
         vi.spyOn(codexAppServerClient, "threadRead").mockResolvedValue({
             thread: {
                 turns: [
-                    {id: "completed-turn", status: "completed"},
-                    {id: "active-turn", status: "inProgress"},
+                    {
+                        id: "completed-turn",
+                        status: "completed",
+                        items: [{type: "agentMessage", id: "assistant-message-id"}],
+                    },
+                    {id: "active-turn", status: "inProgress", items: []},
                 ],
             },
         } as never);
 
         await expect(
-            codexAcpClient.findForkPointBeforeTurn("source-session-id", "active-turn"),
-        ).resolves.toBe("completed-turn");
+            codexAcpClient.findMessageBeforeTurn("source-session-id", "active-turn"),
+        ).resolves.toBe("assistant-message-id");
     });
 
     it("rejects when the active Codex turn changed during capture", async () => {
@@ -111,7 +128,7 @@ describe("ACP session fork", () => {
         } as never);
 
         await expect(
-            codexAcpClient.findForkPointBeforeTurn("source-session-id", "stale-active-turn"),
+            codexAcpClient.findMessageBeforeTurn("source-session-id", "stale-active-turn"),
         ).rejects.toThrow("Invalid request");
     });
 

@@ -28,9 +28,6 @@
           }
         }
       ]
-    },
-    "lody": {
-      "forkPoint": "turn-id"
     }
   }
 }

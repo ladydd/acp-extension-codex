@@ -47,7 +47,7 @@ import {
     getCodexSteerId,
     isExtMethodRequest,
     LEGACY_SET_SESSION_MODEL_METHOD,
-    LODY_FORK_POINT_BEFORE_ACTIVE_TURN_METHOD,
+    LODY_FORK_MESSAGE_BEFORE_ACTIVE_TURN_METHOD,
 } from "./AcpExtensions";
 import {
     createCollabAgentToolCallUpdate,
@@ -268,7 +268,7 @@ export class CodexAcpServer {
                         steer: CODEX_STEER_CAPABILITY,
                     },
                     lody: {
-                        forkPointBeforeActiveTurn: {version: 1},
+                        forkAtMessage: {version: 1, beforeActiveTurn: true},
                     },
                 },
             },
@@ -669,20 +669,20 @@ export class CodexAcpServer {
         };
     }
 
-    async resolveForkPointBeforeActiveTurn(params: {sessionId: string}): Promise<{forkPoint: string}> {
+    async resolveMessageBeforeActiveTurn(params: {sessionId: string}): Promise<{messageId: string}> {
         const session = this.sessions.get(params.sessionId);
         const activeTurnId = session?.currentTurnId;
         if (!activeTurnId) {
             throw RequestError.invalidRequest("Session has no active turn");
         }
-        const forkPoint = await this.runWithProcessCheck(() =>
-            this.codexAcpClient.findForkPointBeforeTurn(params.sessionId, activeTurnId)
+        const messageId = await this.runWithProcessCheck(() =>
+            this.codexAcpClient.findMessageBeforeTurn(params.sessionId, activeTurnId)
         );
-        logger.log("Resolved fork point before active turn", {
+        logger.log("Resolved ACP message before active turn", {
             sessionId: params.sessionId,
-            method: LODY_FORK_POINT_BEFORE_ACTIVE_TURN_METHOD,
+            method: LODY_FORK_MESSAGE_BEFORE_ACTIVE_TURN_METHOD,
         });
-        return {forkPoint};
+        return {messageId};
     }
 
     async listSessions(params: acp.ListSessionsRequest): Promise<acp.ListSessionsResponse> {
@@ -1879,10 +1879,7 @@ export class CodexAcpServer {
                 return {
                     stopReason: "end_turn",
                     usage: this.buildPromptUsage(sessionState.lastTokenUsage),
-                    _meta: this.buildQuotaMeta(
-                        sessionState,
-                        commandResult.turnCompleted?.turn.id,
-                    ),
+                    _meta: this.buildQuotaMeta(sessionState),
                 };
             }
 
@@ -1969,7 +1966,7 @@ export class CodexAcpServer {
             return {
                 stopReason: "end_turn",
                 usage: this.buildPromptUsage(sessionState.lastTokenUsage),
-                _meta: this.buildQuotaMeta(sessionState, turnCompleted.turn.id),
+                _meta: this.buildQuotaMeta(sessionState),
             };
         } catch (err) {
             logger.error(`Prompt for session ${params.sessionId} failed`, err);
@@ -2005,10 +2002,7 @@ export class CodexAcpServer {
         });
     }
 
-    private buildQuotaMeta(
-        sessionState: SessionState,
-        forkPoint?: string,
-    ): { quota: QuotaMeta, lody?: { forkPoint: string } } {
+    private buildQuotaMeta(sessionState: SessionState): { quota: QuotaMeta } {
         const lastTokenUsage = sessionState.lastTokenUsage;
 
         // Remove the "[reasoning-level]" suffix from currentModelId if present
@@ -2024,7 +2018,6 @@ export class CodexAcpServer {
                 token_count: sessionState.lastTokenUsage,
                 model_usage: modelUsage
             },
-            ...(forkPoint ? {lody: {forkPoint}} : {}),
         };
     }
 
