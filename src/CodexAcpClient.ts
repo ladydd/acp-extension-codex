@@ -52,6 +52,8 @@ import type {AuthenticationStatusResponse} from "./AcpExtensions";
  */
 export const CUSTOM_GATEWAY_PROVIDER_ID = "custom-gateway";
 
+const SESSION_LIST_PAGE_SIZE = 100;
+
 /**
  * ACP `LlmProtocol` values Codex can route through the custom gateway, mapped to
  * the Codex `wire_api`. Codex only supports the OpenAI Responses wire API here.
@@ -868,8 +870,12 @@ export class CodexAcpClient {
         const modelProviders = preferredProvider ? [preferredProvider] : [];
         const listResponse = await this.codexClient.threadList({
             cursor: request.cursor ?? null,
+            limit: SESSION_LIST_PAGE_SIZE,
+            sortKey: "updated_at",
+            sortDirection: "desc",
             modelProviders: modelProviders,
             sourceKinds: sourceKinds,
+            ...(requestedCwd && path.isAbsolute(requestedCwd) ? {cwd: requestedCwd} : {}),
         });
 
         const mapThreadToSession = (thread: Thread) => ({
@@ -879,7 +885,7 @@ export class CodexAcpClient {
             updatedAt: new Date(thread.updatedAt * 1000).toISOString(),
         });
 
-        if (listResponse.data.length === 0) {
+        if (listResponse.data.length === 0 && !requestedCwd) {
             const diagnostics = await this.runSessionListDiagnostics();
             logger.log("Session list diagnostics", diagnostics);
         }
