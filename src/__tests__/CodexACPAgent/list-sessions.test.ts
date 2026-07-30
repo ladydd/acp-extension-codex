@@ -76,6 +76,10 @@ describe("CodexACPAgent - list sessions", () => {
         const response = await codexAcpAgent.listSessions(params);
 
         expect(codexAppServerClient.threadList).toHaveBeenCalledWith(expect.objectContaining({
+            cwd: "/repo/project",
+            limit: 100,
+            sortKey: "updated_at",
+            sortDirection: "desc",
             sourceKinds: [
                 "cli",
                 "vscode",
@@ -87,6 +91,30 @@ describe("CodexACPAgent - list sessions", () => {
         await expect(JSON.stringify(response, null, 2)).toMatchFileSnapshot(
             "data/list-sessions.json"
         );
+    });
+
+    it("does not run global diagnostics for an empty cwd-filtered page", async () => {
+        const fixture = createCodexMockTestFixture();
+        const codexAcpAgent = fixture.getCodexAcpAgent();
+        const codexAcpClient = fixture.getCodexAcpClient();
+        const codexAppServerClient = fixture.getCodexAppServerClient();
+
+        codexAcpClient.authRequired = vi.fn().mockResolvedValue(false);
+        codexAppServerClient.threadList = vi.fn().mockResolvedValue({
+            data: [],
+            nextCursor: null,
+        });
+
+        const response = await codexAcpAgent.listSessions({
+            cwd: "/repo/project",
+            cursor: null,
+        });
+
+        expect(response).toEqual({
+            sessions: [],
+            nextCursor: null,
+        });
+        expect(codexAppServerClient.threadList).toHaveBeenCalledTimes(1);
     });
 
     it("should prefer the explicit thread name as the session title", async () => {
