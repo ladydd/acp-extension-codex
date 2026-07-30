@@ -69,6 +69,12 @@ describe('CodexACPAgent - initialize', () => {
                             configPolicy: "active",
                         },
                     },
+                    lody: {
+                        forkAtMessage: {
+                            version: 1,
+                            beforeActiveTurn: true,
+                        },
+                    },
                 },
             },
             authMethods: getCodexAuthMethods(),

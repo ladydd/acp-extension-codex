@@ -47,6 +47,7 @@ import {
     getCodexSteerId,
     isExtMethodRequest,
     LEGACY_SET_SESSION_MODEL_METHOD,
+    LODY_FORK_MESSAGE_BEFORE_ACTIVE_TURN_METHOD,
 } from "./AcpExtensions";
 import {
     createCollabAgentToolCallUpdate,
@@ -265,6 +266,9 @@ export class CodexAcpServer {
                 _meta: {
                     codex: {
                         steer: CODEX_STEER_CAPABILITY,
+                    },
+                    lody: {
+                        forkAtMessage: {version: 1, beforeActiveTurn: true},
                     },
                 },
             },
@@ -663,6 +667,22 @@ export class CodexAcpServer {
             modes: modeState,
             ...this.createSessionConfigOptionsResponse(this.getSessionState(sessionId)),
         };
+    }
+
+    async resolveMessageBeforeActiveTurn(params: {sessionId: string}): Promise<{messageId: string}> {
+        const session = this.sessions.get(params.sessionId);
+        const activeTurnId = session?.currentTurnId;
+        if (!activeTurnId) {
+            throw RequestError.invalidRequest("Session has no active turn");
+        }
+        const messageId = await this.runWithProcessCheck(() =>
+            this.codexAcpClient.findMessageBeforeTurn(params.sessionId, activeTurnId)
+        );
+        logger.log("Resolved ACP message before active turn", {
+            sessionId: params.sessionId,
+            method: LODY_FORK_MESSAGE_BEFORE_ACTIVE_TURN_METHOD,
+        });
+        return {messageId};
     }
 
     async listSessions(params: acp.ListSessionsRequest): Promise<acp.ListSessionsResponse> {
@@ -1997,7 +2017,7 @@ export class CodexAcpServer {
             quota: {
                 token_count: sessionState.lastTokenUsage,
                 model_usage: modelUsage
-            }
+            },
         };
     }
 
