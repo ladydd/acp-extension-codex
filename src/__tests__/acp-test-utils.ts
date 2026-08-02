@@ -268,6 +268,8 @@ export function createCodexMockTestFixture(): CodexMockTestFixture {
 
     const mockCodexConnection = {
         sendRequest: () => Promise.resolve(undefined),
+        onClose: () => ({ dispose: () => {} }),
+        onDispose: () => ({ dispose: () => {} }),
         onUnhandledNotification: (handler: (notification: any) => void) => {
             unhandledNotificationHandler = handler;
         },

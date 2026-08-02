@@ -156,6 +156,7 @@ export class CodexAppServerClient {
     private readonly threadGoalUpdateCaptures = new Map<string, Set<(event: ThreadGoalUpdatedNotification) => void>>();
     private readonly threadGoalClearedCaptures = new Map<string, Set<() => void>>();
     private readonly staleTurnIds = new Map<string, Set<string>>();
+    private turnCompletionTerminalError: Error | null = null;
 
     constructor(connection: MessageConnection) {
         this.connection = connection;
@@ -298,13 +299,16 @@ export class CodexAppServerClient {
             const turnStarted = await this.turnStart(params);
             onTurnStarted?.(turnStarted.turn.id);
             const earlyCompletion = capturedCompletions.find(event => event.turn.id === turnStarted.turn.id);
-            releaseCapture();
             if (earlyCompletion) {
                 return earlyCompletion;
             }
+            // Register before releasing the early-completion capture so process
+            // exit or turn/completed cannot fall between both mechanisms.
+            const completion = this.awaitTurnCompleted(params.threadId, turnStarted.turn.id);
+            releaseCapture();
             // Wait for turn completion
             // If turnInterrupt() was called, Codex will send turn/completed event with status "interrupted"
-            return await this.awaitTurnCompleted(params.threadId, turnStarted.turn.id);
+            return await completion;
         } finally {
             releaseCapture();
         }
@@ -323,11 +327,12 @@ export class CodexAppServerClient {
             const reviewStarted = await this.reviewStart(params);
             onTurnStarted?.(reviewStarted.turn.id, reviewStarted.reviewThreadId);
             const earlyCompletion = capturedCompletions.find(event => event.turn.id === reviewStarted.turn.id);
-            releaseCapture();
             if (earlyCompletion) {
                 return earlyCompletion;
             }
-            return await this.awaitTurnCompleted(reviewStarted.reviewThreadId, reviewStarted.turn.id);
+            const completion = this.awaitTurnCompleted(reviewStarted.reviewThreadId, reviewStarted.turn.id);
+            releaseCapture();
+            return await completion;
         } finally {
             releaseCapture();
         }
@@ -626,6 +631,9 @@ export class CodexAppServerClient {
 
     //TODO create type-safe helper
     async awaitTurnCompleted(threadId: string, turnId: string): Promise<TurnCompletedNotification> {
+        if (this.turnCompletionTerminalError) {
+            throw this.turnCompletionTerminalError;
+        }
         return await new Promise((resolve, reject) => {
             const threadResolvers = this.getOrCreatePendingTurnCompletionResolvers(threadId);
             threadResolvers.set(turnId, {resolve, reject});
@@ -832,6 +840,7 @@ export class CodexAppServerClient {
      * "A Codex prompt is already active".
      */
     private rejectAllPendingTurnCompletions(error: Error): void {
+        this.turnCompletionTerminalError ??= error;
         const threads = [...this.pendingTurnCompletionResolvers.values()];
         this.pendingTurnCompletionResolvers.clear();
         for (const threadResolvers of threads) {
