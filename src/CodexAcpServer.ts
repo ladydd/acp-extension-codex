@@ -1711,48 +1711,49 @@ export class CodexAcpServer {
         requestName: "Cancel" | "Close",
         resolveInterruptedTurn: boolean,
     ): Promise<void> {
-        const turnId = await this.getInterruptibleTurnId(sessionState, requestName);
-        if (!turnId) {
+        const turn = await this.getInterruptibleTurn(sessionState, requestName);
+        if (!turn) {
             return;
         }
 
         logger.log(`${requestName} session requested`, {
             sessionId: sessionState.sessionId,
-            currentTurnId: turnId,
+            threadId: turn.threadId,
+            currentTurnId: turn.turnId,
         });
         if (resolveInterruptedTurn) {
-            this.codexAcpClient.markTurnStale({
-                threadId: sessionState.sessionId,
-                turnId,
-            });
+            this.codexAcpClient.markTurnStale(turn);
         }
         try {
-            await this.runWithProcessCheck(() => this.codexAcpClient.turnInterrupt({
-                threadId: sessionState.sessionId,
-                turnId,
-            }));
+            await this.runWithProcessCheck(() => this.codexAcpClient.turnInterrupt(turn));
             logger.log(`${requestName} - turnInterrupt succeeded`, {
                 sessionId: sessionState.sessionId,
-                currentTurnId: turnId,
+                threadId: turn.threadId,
+                currentTurnId: turn.turnId,
             });
         } catch (err) {
             logger.error(`${requestName} - turnInterrupt failed`, err);
         } finally {
             if (resolveInterruptedTurn) {
-                this.codexAcpClient.resolveTurnInterrupted({
-                    threadId: sessionState.sessionId,
-                    turnId,
-                });
+                this.codexAcpClient.resolveTurnInterrupted(turn);
             }
         }
     }
 
-    private async getInterruptibleTurnId(
+    private async getInterruptibleTurn(
         sessionState: SessionState,
         requestName: "Cancel" | "Close",
-    ): Promise<string | null> {
+    ): Promise<{ threadId: string, turnId: string } | null> {
+        // `activePrompt.currentTurn` is the authoritative handle: command turns
+        // (e.g. /review) run on their own thread, so pairing the turn id with
+        // `sessionState.sessionId` would produce a (threadId, turnId) pair codex
+        // does not know and the interrupt would silently no-op.
+        const currentTurn = this.activePrompts.get(sessionState.sessionId)?.currentTurn;
+        if (currentTurn) {
+            return currentTurn;
+        }
         if (sessionState.currentTurnId) {
-            return sessionState.currentTurnId;
+            return {threadId: sessionState.sessionId, turnId: sessionState.currentTurnId};
         }
 
         const pendingTurnStart = this.pendingTurnStarts.get(sessionState.sessionId);
@@ -1769,8 +1770,12 @@ export class CodexAcpServer {
         const turnId = await pendingTurnStart.promise;
         if (!turnId) {
             logger.log(`${requestName} request rejected: no current turn`, {sessionId: sessionState.sessionId});
+            return null;
         }
-        return turnId;
+        // `onTurnStarted` populates `currentTurn` (with the real thread id)
+        // before resolving the pending turn start.
+        const startedTurn = this.activePrompts.get(sessionState.sessionId)?.currentTurn;
+        return startedTurn ?? {threadId: sessionState.sessionId, turnId};
     }
 
     async prompt(params: acp.PromptRequest, signal?: AbortSignal): Promise<acp.PromptResponse> {

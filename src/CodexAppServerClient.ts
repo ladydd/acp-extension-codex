@@ -145,7 +145,10 @@ export class CodexAppServerClient {
     private mcpServerStartupVersion = 0;
     private readonly mcpServerStartupStates = new Map<string, McpServerStartupSnapshot>();
     private readonly mcpServerStartupResolvers: Array<McpServerStartupResolver> = [];
-    private readonly pendingTurnCompletionResolvers = new Map<string, Map<string, (event: TurnCompletedNotification) => void>>();
+    private readonly pendingTurnCompletionResolvers = new Map<string, Map<string, {
+        resolve: (event: TurnCompletedNotification) => void;
+        reject: (error: Error) => void;
+    }>>();
     private readonly pendingCompactionCompletionResolvers = new Map<string, Set<(event: CompactionCompletedNotification) => void>>();
     private readonly turnCompletionCaptures = new Map<string, Set<(event: TurnCompletedNotification) => void>>();
     private readonly turnRoutingCaptures = new Map<string, Set<(turnId: string) => void>>();
@@ -156,6 +159,13 @@ export class CodexAppServerClient {
 
     constructor(connection: MessageConnection) {
         this.connection = connection;
+        // Process exit disposes the connection (see CodexJsonRpcConnection);
+        // fail waiters that only a now-impossible notification could settle.
+        const failPendingTurns = () => this.rejectAllPendingTurnCompletions(
+            new Error("Codex process exited before completing the turn"),
+        );
+        this.connection.onClose(failPendingTurns);
+        this.connection.onDispose(failPendingTurns);
         this.connection.onUnhandledNotification((data) => {
             const serverNotification = data as ServerNotification;
             if (isMcpServerStatusUpdatedNotification(serverNotification)) {
@@ -616,9 +626,9 @@ export class CodexAppServerClient {
 
     //TODO create type-safe helper
     async awaitTurnCompleted(threadId: string, turnId: string): Promise<TurnCompletedNotification> {
-        return await new Promise((resolve) => {
+        return await new Promise((resolve, reject) => {
             const threadResolvers = this.getOrCreatePendingTurnCompletionResolvers(threadId);
-            threadResolvers.set(turnId, resolve);
+            threadResolvers.set(turnId, {resolve, reject});
         });
     }
 
@@ -688,13 +698,13 @@ export class CodexAppServerClient {
 
     private recordTurnCompleted(event: TurnCompletedNotification): void {
         const threadResolvers = this.pendingTurnCompletionResolvers.get(event.threadId);
-        const resolve = threadResolvers?.get(event.turn.id);
-        if (resolve) {
+        const entry = threadResolvers?.get(event.turn.id);
+        if (entry) {
             threadResolvers!.delete(event.turn.id);
             if (threadResolvers!.size === 0) {
                 this.pendingTurnCompletionResolvers.delete(event.threadId);
             }
-            resolve(event);
+            entry.resolve(event);
             return;
         }
 
@@ -799,14 +809,36 @@ export class CodexAppServerClient {
         }
     }
 
-    private getOrCreatePendingTurnCompletionResolvers(threadId: string): Map<string, (event: TurnCompletedNotification) => void> {
+    private getOrCreatePendingTurnCompletionResolvers(threadId: string): Map<string, {
+        resolve: (event: TurnCompletedNotification) => void;
+        reject: (error: Error) => void;
+    }> {
         const existing = this.pendingTurnCompletionResolvers.get(threadId);
         if (existing) {
             return existing;
         }
-        const created = new Map<string, (event: TurnCompletedNotification) => void>();
+        const created = new Map<string, {
+            resolve: (event: TurnCompletedNotification) => void;
+            reject: (error: Error) => void;
+        }>();
         this.pendingTurnCompletionResolvers.set(threadId, created);
         return created;
+    }
+
+    /**
+     * The codex process exiting mid-turn means `turn/completed` will never
+     * arrive. Without this, `awaitTurnCompleted` hangs forever, the prompt
+     * promise never settles, and the session rejects every future prompt with
+     * "A Codex prompt is already active".
+     */
+    private rejectAllPendingTurnCompletions(error: Error): void {
+        const threads = [...this.pendingTurnCompletionResolvers.values()];
+        this.pendingTurnCompletionResolvers.clear();
+        for (const threadResolvers of threads) {
+            for (const entry of threadResolvers.values()) {
+                entry.reject(error);
+            }
+        }
     }
 
     private captureTurnCompletions(threadId: string, capture: (event: TurnCompletedNotification) => void): () => void {
