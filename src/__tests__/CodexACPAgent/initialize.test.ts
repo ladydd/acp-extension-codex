@@ -64,6 +64,7 @@ describe('CodexACPAgent - initialize', () => {
                     codex: {
                         steer: {
                             version: 1,
+                            method: "_session/steering",
                             appliedNotification: "_codex/steerApplied",
                             upstreamTurn: "same",
                             configPolicy: "active",
@@ -77,6 +78,11 @@ describe('CodexACPAgent - initialize', () => {
                 },
             },
             authMethods: getCodexAuthMethods(),
+            _meta: {
+                steering: {
+                    supported: true,
+                },
+            },
         });
     });
 
@@ -101,7 +107,7 @@ describe('CodexACPAgent - initialize', () => {
         ]));
     });
 
-    it('should retain the fork experimental app-server capability configuration', async () => {
+    it('enables experimental thread APIs used by fork and settings without requesting attestation', async () => {
         await agent.initialize({
             protocolVersion: acp.PROTOCOL_VERSION,
             clientCapabilities: {

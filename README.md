@@ -12,6 +12,7 @@ Use [OpenAI Codex](https://github.com/openai/codex) from [Agent Client Protocol]
 - Model, reasoning effort, fast mode, approval, and sandbox mode configuration.
 - Text prompts, embedded context, images, resource links, and additional workspace directories.
 - Shell command, file change, permission request, MCP tool call, terminal output, reasoning, plan, web search, image generation, image view, token usage, and review events.
+- Subagent launches as standard ACP tool calls, with Codex thread identity and activity details in namespaced `_meta.codex.subagent` metadata.
 - Client-provided MCP servers over command-based stdio config and HTTP transport.
 - Native ACP session forking through Codex App Server `thread/fork`.
 - Acknowledged steering of an active Codex turn through app-server `turn/steer`.
@@ -49,11 +50,12 @@ The adapter advertises ACP auth methods during initialization. Clients can authe
 ## Steering extension
 
 The initialize response advertises `_meta.codex.steer` with the applied notification
-method and active-turn configuration policy. To steer a running prompt, send another
-`session/prompt` with a unique `_meta.codex.steer.id`. The adapter calls Codex
-`turn/steer` and emits `_codex/steerApplied { sessionId, steerId }` only after Codex
-commits the correlated user-message item. The steer keeps the active turn's model,
-mode, and configuration; slash commands cannot be steered.
+method and active-turn configuration policy. To steer a running prompt, call the
+advertised `_session/steering` method with `{ sessionId, prompt }`. Clients that need a
+committed-application boundary can also include a unique `steerId`. The adapter calls
+Codex `turn/steer` and emits `_codex/steerApplied { sessionId, steerId }` only after
+Codex commits that correlated user-message item. The steer keeps the active turn's
+model, mode, and configuration; slash commands cannot be steered.
 
 ## Runtime options
 

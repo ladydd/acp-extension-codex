@@ -7,7 +7,10 @@ import {
 } from "../../ModelConfigOption";
 import type {Model, ReasoningEffortOption} from "../../app-server/v2";
 import {LEGACY_SET_SESSION_MODEL_METHOD} from "../../AcpExtensions";
-import {PLAN_MODE_CONFIG_ID} from "../../PlanModeConfig";
+import {
+    COLLABORATION_MODE_CONFIG_ID,
+    PLAN_COLLABORATION_MODE,
+} from "../../CollaborationModeConfig";
 
 const lowEffort: ReasoningEffortOption = {reasoningEffort: "low", description: "Fast"};
 const mediumEffort: ReasoningEffortOption = {reasoningEffort: "medium", description: "Balanced"};
@@ -44,20 +47,21 @@ async function createSession(currentModelId: string, availableModels: Array<Mode
         sessionId: "session-id",
         currentModelId,
         models: availableModels,
+        collaborationMode: "default",
         additionalDirectories: [],
     });
 
     const response = await codexAcpAgent.newSession({cwd: "/test/cwd", mcpServers: []});
-    return {codexAcpAgent, codexAcpClient, response};
+    return {fixture, codexAcpAgent, codexAcpClient, response};
 }
 
 describe("Session config options", () => {
-    it("exposes mode, model, reasoning_effort, fast-mode and plan-mode in the new session response", async () => {
+    it("exposes mode, model, reasoning_effort, fast-mode and collaboration mode", async () => {
         const {fast, slow} = buildModels();
         const {response} = await createSession("fast-model[medium]", [fast, slow]);
 
         const ids = response.configOptions?.map(o => o.id);
-        expect(ids).toEqual([MODE_CONFIG_ID, MODEL_CONFIG_ID, REASONING_EFFORT_CONFIG_ID, "fast-mode", PLAN_MODE_CONFIG_ID]);
+        expect(ids).toEqual([MODE_CONFIG_ID, COLLABORATION_MODE_CONFIG_ID, MODEL_CONFIG_ID, REASONING_EFFORT_CONFIG_ID, "fast-mode"]);
 
         const modelOption = response.configOptions?.find(o => o.id === MODEL_CONFIG_ID);
         expect(modelOption).toMatchObject({
@@ -99,7 +103,7 @@ describe("Session config options", () => {
         const {codexAcpAgent, response} = await createSession("custom-model[high]", [fast, slow]);
 
         const ids = response.configOptions?.map(o => o.id);
-        expect(ids).toEqual([MODE_CONFIG_ID, MODEL_CONFIG_ID, PLAN_MODE_CONFIG_ID]);
+        expect(ids).toEqual([MODE_CONFIG_ID, COLLABORATION_MODE_CONFIG_ID, MODEL_CONFIG_ID]);
 
         const modelOption = response.configOptions?.find(o => o.id === MODEL_CONFIG_ID);
         expect(modelOption).toMatchObject({
@@ -153,6 +157,80 @@ describe("Session config options", () => {
         expect((modeOption as any).currentValue).toBe(AgentMode.ReadOnly.id);
     });
 
+    it("changes collaboration mode without starting a model turn", async () => {
+        const {fast} = buildModels();
+        const {codexAcpAgent, codexAcpClient} = await createSession("fast-model[medium]", [fast]);
+        const update = vi.spyOn((codexAcpClient as any).codexClient, "threadSettingsUpdate").mockResolvedValue(undefined);
+
+        const result = await codexAcpAgent.setSessionConfigOption({
+            sessionId: "session-id",
+            configId: COLLABORATION_MODE_CONFIG_ID,
+            value: PLAN_COLLABORATION_MODE,
+        });
+
+        expect(update).toHaveBeenCalledWith(expect.objectContaining({
+            threadId: "session-id",
+            collaborationMode: expect.objectContaining({mode: "plan"}),
+        }));
+        expect(codexAcpAgent.getSessionState("session-id").collaborationMode).toBe("plan");
+        expect(result.configOptions?.find(o => o.id === COLLABORATION_MODE_CONFIG_ID)).toMatchObject({currentValue: "plan"});
+    });
+
+    it("toggles collaboration mode with /plan without starting a model turn", async () => {
+        const {fast} = buildModels();
+        const {fixture, codexAcpAgent, codexAcpClient} = await createSession("fast-model[medium]", [fast]);
+        const update = vi.spyOn((codexAcpClient as any).codexClient, "threadSettingsUpdate").mockResolvedValue(undefined);
+        const turnStart = vi.spyOn(fixture.getCodexAppServerClient(), "turnStart");
+
+        const enabledResponse = await codexAcpAgent.prompt({
+            sessionId: "session-id",
+            prompt: [{type: "text", text: "/plan"}],
+        });
+
+        expect(enabledResponse.stopReason).toBe("end_turn");
+        expect(turnStart).not.toHaveBeenCalled();
+        expect(update).toHaveBeenCalledWith(expect.objectContaining({
+            threadId: "session-id",
+            collaborationMode: expect.objectContaining({mode: "plan"}),
+        }));
+        expect(codexAcpAgent.getSessionState("session-id").collaborationMode).toBe("plan");
+
+        const disabledResponse = await codexAcpAgent.prompt({
+            sessionId: "session-id",
+            prompt: [{type: "text", text: "/plan"}],
+        });
+
+        expect(disabledResponse.stopReason).toBe("end_turn");
+        expect(turnStart).not.toHaveBeenCalled();
+        expect(update).toHaveBeenLastCalledWith(expect.objectContaining({
+            threadId: "session-id",
+            collaborationMode: expect.objectContaining({mode: "default"}),
+        }));
+        expect(codexAcpAgent.getSessionState("session-id").collaborationMode).toBe("default");
+        expect(fixture.getAcpConnectionEvents([])).toContainEqual(expect.objectContaining({
+            method: "sessionUpdate",
+            args: [expect.objectContaining({
+                update: expect.objectContaining({
+                    sessionUpdate: "config_option_update",
+                    configOptions: expect.arrayContaining([
+                        expect.objectContaining({id: COLLABORATION_MODE_CONFIG_ID, currentValue: "plan"}),
+                    ]),
+                }),
+            })],
+        }));
+        expect(fixture.getAcpConnectionEvents([])).toContainEqual(expect.objectContaining({
+            method: "sessionUpdate",
+            args: [expect.objectContaining({
+                update: expect.objectContaining({
+                    sessionUpdate: "config_option_update",
+                    configOptions: expect.arrayContaining([
+                        expect.objectContaining({id: COLLABORATION_MODE_CONFIG_ID, currentValue: "default"}),
+                    ]),
+                }),
+            })],
+        }));
+    });
+
     it("changes the model and keeps the current reasoning effort when supported", async () => {
         const {fast, slow} = buildModels();
         const {codexAcpAgent} = await createSession("fast-model[medium]", [fast, slow]);
@@ -204,6 +282,7 @@ describe("Session config options", () => {
             sessionId: "session-id",
             currentModelId: "fast-model[medium]",
             models: [fast],
+            collaborationMode: "default",
             additionalDirectories: [],
         });
         await codexAcpAgent.newSession({cwd: "/test/cwd", mcpServers: []});
