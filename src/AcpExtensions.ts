@@ -1,6 +1,7 @@
 import type {
     AvailableCommand,
     ClientContext,
+    ContentBlock,
     LoadSessionResponse,
     NewSessionResponse,
     ResumeSessionResponse,
@@ -12,6 +13,8 @@ export const ACP_EXT_SESSION_USAGE_UPDATE_METHOD = "_acp_ext:session_usage_updat
 export const ACP_EXT_SESSION_RATE_LIMITS_METHOD = "_acp_ext:session_rate_limits";
 export const ACP_EXT_CODEX_PROPOSED_PLAN_METHOD = "_acp_ext:codex_proposed_plan";
 export const CODEX_STEER_APPLIED_METHOD = "_codex/steerApplied";
+export const SESSION_STEERING_METHOD = "_session/steering";
+export const GOAL_CONTROL_METHOD = "_codex/session/goal_control";
 export function getLodyForkTurnId(meta: unknown): string | null {
     if (typeof meta !== "object" || meta === null) return null;
     const lody = (meta as Record<string, unknown>)["lody"];
@@ -27,6 +30,7 @@ export function getLodyForkTurnId(meta: unknown): string | null {
 
 export type CodexSteerCapability = {
     version: 1;
+    method: typeof SESSION_STEERING_METHOD;
     appliedNotification: typeof CODEX_STEER_APPLIED_METHOD;
     upstreamTurn: "same";
     configPolicy: "active";
@@ -34,20 +38,11 @@ export type CodexSteerCapability = {
 
 export const CODEX_STEER_CAPABILITY: CodexSteerCapability = {
     version: 1,
+    method: SESSION_STEERING_METHOD,
     appliedNotification: CODEX_STEER_APPLIED_METHOD,
     upstreamTurn: "same",
     configPolicy: "active",
 };
-
-export function getCodexSteerId(meta: unknown): string | null {
-    if (typeof meta !== "object" || meta === null) return null;
-    const codex = (meta as Record<string, unknown>)["codex"];
-    if (typeof codex !== "object" || codex === null) return null;
-    const steer = (codex as Record<string, unknown>)["steer"];
-    if (typeof steer !== "object" || steer === null) return null;
-    const id = (steer as Record<string, unknown>)["id"];
-    return typeof id === "string" && id.length > 0 ? id : null;
-}
 
 export type LegacySessionModel = {
     modelId: string;
@@ -123,11 +118,15 @@ export type ExtMethodRequest =
     AuthenticationStatusRequest
     | AuthenticationLogoutRequest
     | LegacySetSessionModelExtRequest
+    | SessionSteeringExtRequest
+    | GoalControlExtRequest
 
 export function isExtMethodRequest(request: { method: string, params: Record<string, unknown> }): request is ExtMethodRequest {
     return request.method === "authentication/status"
         || request.method === "authentication/logout"
-        || request.method === LEGACY_SET_SESSION_MODEL_METHOD;
+        || request.method === LEGACY_SET_SESSION_MODEL_METHOD
+        || request.method === GOAL_CONTROL_METHOD
+        || request.method === SESSION_STEERING_METHOD;
 }
 
 export type AuthenticationStatusRequest = { method: "authentication/status", params: {} }
@@ -141,9 +140,46 @@ export type LegacySetSessionModelExtRequest = {
     params: LegacySetSessionModelRequest;
 }
 
+export type GoalControlRequest = {
+    sessionId: SessionId;
+    action: "pause" | "clear";
+}
+
+export type GoalControlExtRequest = {
+    method: typeof GOAL_CONTROL_METHOD;
+    params: GoalControlRequest;
+}
+
 export async function legacySetSessionModel(
     connection: Pick<ClientContext, "request">,
     params: LegacySetSessionModelRequest,
 ): Promise<LegacySetSessionModelResponse> {
     return await connection.request<LegacySetSessionModelResponse, LegacySetSessionModelRequest>(LEGACY_SET_SESSION_MODEL_METHOD, params);
+}
+
+export type SessionSteerRequest = {
+    sessionId: SessionId;
+    prompt: ContentBlock[];
+    /**
+     * Lody application correlation. When present, the adapter only injects
+     * into the active turn and confirms application through the advertised
+     * committed-user-message notification; it never starts a fallback turn.
+     */
+    steerId?: string;
+}
+
+export type SessionSteeringResponse = {
+    outcome: "injected" | "startedNewTurn" | "failed";
+}
+
+export type SessionSteeringExtRequest = {
+    method: typeof SESSION_STEERING_METHOD;
+    params: SessionSteerRequest;
+}
+
+export async function steerSessionWithFallback(
+    connection: Pick<ClientContext, "request">,
+    params: SessionSteerRequest,
+): Promise<SessionSteeringResponse> {
+    return await connection.request<SessionSteeringResponse, SessionSteerRequest>(SESSION_STEERING_METHOD, params);
 }

@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from "vitest";
-import {CODEX_STEER_APPLIED_METHOD} from "../../AcpExtensions";
+import {CODEX_STEER_APPLIED_METHOD, SESSION_STEERING_METHOD} from "../../AcpExtensions";
 import {setupPromptTestSession} from "../acp-test-utils";
 import type {TurnCompletedNotification} from "../../app-server/v2";
 
@@ -28,10 +28,10 @@ describe("CodexACPAgent - steer", () => {
         });
         await vi.waitFor(() => expect(turnStartSpy).toHaveBeenCalledOnce());
 
-        const steerPrompt = mockFixture.getCodexAcpAgent().prompt({
+        const steerPrompt = mockFixture.getCodexAcpAgent().extMethod(SESSION_STEERING_METHOD, {
             sessionId: sessionState.sessionId,
             prompt: [{type: "text", text: "change direction"}],
-            _meta: {codex: {steer: {id: "steer-1"}}},
+            steerId: "steer-1",
         });
         await vi.waitFor(() => expect(turnSteerSpy).toHaveBeenCalledWith({
             threadId: sessionState.sessionId,
@@ -83,7 +83,7 @@ describe("CodexACPAgent - steer", () => {
             },
         });
         await expect(originalPrompt).resolves.toMatchObject({stopReason: "end_turn"});
-        await expect(steerPrompt).resolves.toMatchObject({stopReason: "end_turn"});
+        await expect(steerPrompt).resolves.toEqual({outcome: "injected"});
     });
 
     it("rejects an unmarked concurrent prompt instead of starting an ambiguous turn", async () => {

@@ -15,7 +15,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Configure sandboxing
@@ -41,7 +41,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -51,6 +51,7 @@ jobs:
   create-release:
     needs: publish-to-npm
     runs-on: ubuntu-latest
+    environment: release
     permissions: {}
     steps:
       - name: Generate GitHub token
@@ -61,7 +62,32 @@ jobs:
           private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
 
       - name: Create Release
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           token: ${{ steps.generate-token.outputs.token }}
           generate_release_notes: true
+
+  trigger-registry-update:
+    needs: create-release
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    steps:
+      - name: Generate token scoped to the registry repo
+        uses: actions/create-github-app-token@v3
+        id: registry-token
+        with:
+          app-id: ${{ secrets.REGISTRY_UPDATER_APP_ID }}
+          private-key: ${{ secrets.REGISTRY_UPDATER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: registry
+
+      - name: Dispatch registry version update
+        env:
+          GH_TOKEN: ${{ steps.registry-token.outputs.token }}
+        run: |
+          gh workflow run update-versions.yml \
+            --repo ${{ github.repository_owner }}/registry \
+            --ref main \
+            -f apply=true \
+            -f agents=codex-acp

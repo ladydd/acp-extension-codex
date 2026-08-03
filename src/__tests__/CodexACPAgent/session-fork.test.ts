@@ -98,6 +98,7 @@ describe("ACP session fork", () => {
                     sessionId: "child-session-id",
                     currentModelId: "model-id[medium]",
                     models: [model],
+                    collaborationMode: "default",
                     modelProvider: "custom-provider",
                     currentServiceTier: null,
                     additionalDirectories: ["/workspace/extra"],

@@ -196,6 +196,7 @@ describe("CodexACPAgent - list sessions", () => {
                 defaultServiceTier: null,
                 isDefault: true,
             }],
+            collaborationMode: "default",
             currentServiceTier: null,
             additionalDirectories: ["/repo/extra"],
         });
