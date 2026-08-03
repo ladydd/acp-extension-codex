@@ -437,11 +437,21 @@ export class CodexEventHandler {
 
     private async createConfigWarningEvent(event: ConfigWarningNotification): Promise<UpdateSessionEvent> {
         const detailsText = event.details ? `\n\n${event.details}` : "";
-        return createAgentTextMessageChunk(`Config warning: ${event.summary}${detailsText}\n\n`);
+        return this.createCodexSessionInfoUpdate({
+            warning: {
+                message: `${event.summary}${detailsText}`,
+                source: "configWarning",
+            },
+        });
     }
 
     private createWarningEvent(event: WarningNotification): UpdateSessionEvent {
-        return createAgentTextMessageChunk(`Warning: ${event.message}\n\n`);
+        return this.createCodexSessionInfoUpdate({
+            warning: {
+                message: event.message,
+                source: "warning",
+            },
+        });
     }
 
     private createModelReroutedEvent(event: ModelReroutedNotification): UpdateSessionEvent {
