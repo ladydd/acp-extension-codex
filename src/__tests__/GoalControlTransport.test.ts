@@ -1,17 +1,25 @@
 import * as acp from "@agentclientprotocol/sdk";
 import {describe, expect, it} from "vitest";
 import {GOAL_CONTROL_METHOD, LEGACY_GOAL_CONTROL_METHOD} from "../AcpExtensions";
-import {registerGoalControlRequests} from "../GoalControlTransport";
+import type {CodexAcpServer} from "../CodexAcpServer";
+import {createCodexAcpApp} from "../CodexAcpApp";
 
 describe("goal control transport", () => {
     it.each([GOAL_CONTROL_METHOD, LEGACY_GOAL_CONTROL_METHOD])(
         "routes %s over an ACP connection",
         async (method) => {
-            const app = registerGoalControlRequests(acp.agent({name: "goal-control-test"}), () => ({
-                async extMethod(receivedMethod, params) {
-                    return {receivedMethod, params};
+            let connectionInstalled = false;
+            const app = createCodexAcpApp({
+                name: "goal-control-test",
+                createAgent() {
+                    connectionInstalled = true;
+                    return {
+                        async extMethod(receivedMethod: string, params: Record<string, unknown>) {
+                            return {receivedMethod, params};
+                        },
+                    } as unknown as CodexAcpServer;
                 },
-            }));
+            });
 
             const response = await acp.client({name: "goal-control-client"}).connectWith(app, (connection) =>
                 connection.request(method, {
@@ -21,6 +29,7 @@ describe("goal control transport", () => {
                 })
             );
 
+            expect(connectionInstalled).toBe(true);
             expect(response).toEqual({
                 receivedMethod: method,
                 params: {
