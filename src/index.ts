@@ -13,10 +13,10 @@ import {logger} from "./Logger";
 import {runLoginCommand} from "./login";
 import {runCodexCli} from "./CodexCli";
 import {
-    GOAL_CONTROL_METHOD,
     LEGACY_SET_SESSION_MODEL_METHOD,
     SESSION_STEERING_METHOD,
 } from "./AcpExtensions";
+import {registerGoalControlRequests} from "./GoalControlTransport";
 
 const emptyExtensionParamsParser = z.preprocess(
     (params) => params ?? {},
@@ -33,18 +33,6 @@ const sessionSteerParamsParser = z.object({
     prompt: z.array(z.any()),
     steerId: z.string().min(1).optional(),
 }).passthrough();
-
-const goalControlParamsParser = z.discriminatedUnion("action", [
-    z.object({
-        sessionId: z.string(),
-        action: z.literal("set"),
-        objective: z.string().trim().min(1),
-    }).passthrough(),
-    z.object({
-        sessionId: z.string(),
-        action: z.enum(["pause", "resume", "clear"]),
-    }).passthrough(),
-]);
 
 if (process.argv.includes("--version")) {
     console.log(`${packageJson.name} ${packageJson.version}`);
@@ -125,7 +113,7 @@ function startAcpServer() {
         return codexAcpServer;
     };
 
-    acp.agent({name: packageJson.name})
+    const agentApp = acp.agent({name: packageJson.name})
         .onConnect((connection) => {
             const agent = createAgent(connection.client);
             codexAcpServer = agent;
@@ -155,7 +143,7 @@ function startAcpServer() {
         .onRequest("authentication/status", emptyExtensionParamsParser, (ctx) => getAgent().extMethod("authentication/status", ctx.params))
         .onRequest("authentication/logout", emptyExtensionParamsParser, (ctx) => getAgent().extMethod("authentication/logout", ctx.params))
         .onRequest(LEGACY_SET_SESSION_MODEL_METHOD, legacySetSessionModelParamsParser, (ctx) => getAgent().extMethod(LEGACY_SET_SESSION_MODEL_METHOD, ctx.params))
-        .onRequest(SESSION_STEERING_METHOD, sessionSteerParamsParser, (ctx) => getAgent().extMethod(SESSION_STEERING_METHOD, ctx.params))
-        .onRequest(GOAL_CONTROL_METHOD, goalControlParamsParser, (ctx) => getAgent().extMethod(GOAL_CONTROL_METHOD, ctx.params))
-        .connect(acpJsonStream);
+        .onRequest(SESSION_STEERING_METHOD, sessionSteerParamsParser, (ctx) => getAgent().extMethod(SESSION_STEERING_METHOD, ctx.params));
+
+    registerGoalControlRequests(agentApp, getAgent).connect(acpJsonStream);
 }
