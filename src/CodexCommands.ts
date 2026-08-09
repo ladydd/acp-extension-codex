@@ -26,8 +26,13 @@ type ParsedSlashCommand = {
 };
 
 export type CommandHandleResult =
-    | { handled: false }
+    | { handled: false, prompt?: acp.ContentBlock[] }
     | { handled: true, turnCompleted?: TurnCompletedNotification };
+
+export const GOAL_CONTINUATION_PROMPT: acp.ContentBlock[] = [{
+    type: "text",
+    text: "Continue working toward the active goal.",
+}];
 
 export type CommandHandleOptions = {
     onTurnStartPending?: () => void;
@@ -387,7 +392,7 @@ export class CodexCommands {
 
     private createGoalCommandResult(turnCompleted: TurnCompletedNotification | null): CommandHandleResult {
         if (turnCompleted === null) {
-            return { handled: true };
+            return { handled: false, prompt: GOAL_CONTINUATION_PROMPT };
         }
         return {
             handled: true,
