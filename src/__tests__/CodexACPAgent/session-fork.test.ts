@@ -53,6 +53,7 @@ describe("ACP session fork", () => {
             sessionId: "child-session-id",
             currentModelId: "model-id[medium]",
             models: [model],
+            collaborationMode: "default",
             modelProvider: "openai",
             currentServiceTier: null,
             additionalDirectories: ["/workspace/extra"],

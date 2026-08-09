@@ -4,7 +4,13 @@ import {CodexEventHandler, type CompletedPlan} from "./CodexEventHandler";
 import {CodexApprovalHandler} from "./CodexApprovalHandler";
 import {CodexElicitationHandler} from "./CodexElicitationHandler";
 import {type CodexAuthRequest, getCodexAuthMethods, isCodexAuthRequest} from "./CodexAuthMethod";
-import {CodexAcpClient, type SessionMetadata, type SessionMetadataWithThread} from "./CodexAcpClient";
+import {clientSupportsUrlElicitation} from "./ElicitationCapabilities";
+import {
+    CodexAcpClient,
+    type SessionMetadata,
+    type SessionMetadataWithThread,
+    type UrlElicitationRequester
+} from "./CodexAcpClient";
 import type {McpStartupResult} from "./CodexAppServerClient";
 import {ACPSessionConnection, type AcpClientConnection, type UpdateSessionEvent} from "./ACPSessionConnection";
 import type {InputModality, ReasoningEffort, ServerNotification} from "./app-server";
@@ -13,8 +19,9 @@ import type {
     Model,
     RateLimitSnapshot,
     ReasoningEffortOption,
-    ThreadGoalStatus,
     Thread,
+    ThreadGoal,
+    ThreadGoalStatus,
     ThreadItem,
     UserInput
 } from "./app-server/v2";
@@ -38,33 +45,36 @@ import {
 } from "./ModelConfigOption";
 import type {TokenCount} from "./TokenCount";
 import {toPromptUsage} from "./TokenCount";
-import {CodexCommands} from "./CodexCommands";
+import {CodexCommands, GOAL_CONTINUATION_PROMPT} from "./CodexCommands";
 import {SteeringQueue} from "./SteeringQueue";
 import type {QuotaMeta} from "./QuotaMeta";
 import {logger} from "./Logger";
 import {sanitizeMcpServerName} from "./McpServerName";
 import {createResponseItemHistoryFallbackUpdates} from "./ResponseItemHistoryFallback";
 import {
+    CODEX_STEER_APPLIED_METHOD,
+    CODEX_STEER_CAPABILITY,
+    GOAL_CONTROL_ACTIONS,
+    GOAL_CONTROL_METHOD,
+    GOAL_EXTENSION_VERSION,
+    isExtMethodRequest,
+    LEGACY_GOAL_CONTROL_METHOD,
+    LEGACY_SET_SESSION_MODEL_METHOD,
     type LegacyLoadSessionResponse,
     type LegacyNewSessionResponse,
     type LegacyResumeSessionResponse,
     type LegacySessionModelState,
     type LegacySetSessionModelRequest,
     type LegacySetSessionModelResponse,
-    CODEX_STEER_CAPABILITY,
-    CODEX_STEER_APPLIED_METHOD,
+    SESSION_STEERING_METHOD,
     type SessionSteerRequest,
     type SessionSteeringResponse,
-    GOAL_CONTROL_METHOD,
-    isExtMethodRequest,
-    LEGACY_SET_SESSION_MODEL_METHOD,
-    SESSION_STEERING_METHOD,
 } from "./AcpExtensions";
 import {
     createCollabAgentToolCallUpdate,
-    createCompletedContextCompactionUpdate,
     createCommandExecutionCompleteUpdate,
     createCommandExecutionUpdate,
+    createCompletedContextCompactionUpdate,
     createDynamicToolCallUpdate,
     createFileChangeUpdate,
     createImageGenerationUpdate,
@@ -88,17 +98,13 @@ import {resolveTerminalOutputMode, type TerminalOutputMode} from "./TerminalOutp
 import {sanitizeReasoningParts} from "./ReasoningText";
 import {clientSupportsPlanUpdates} from "./PlanCapabilities";
 import {
-    createCodexAgentMessageMeta,
-    createCodexMessagePhaseMeta,
     createAgentTextMessageChunk,
     createAgentTextThoughtChunk,
+    createCodexAgentMessageMeta,
+    createCodexMessagePhaseMeta,
     createUserMessageChunk,
 } from "./ContentChunks";
-import {
-    sameThreadGoalSnapshot,
-    type ThreadGoalSnapshot,
-    toThreadGoalSnapshot,
-} from "./ThreadGoalSnapshot";
+import {sameThreadGoalSnapshot, type ThreadGoalSnapshot, toThreadGoalSnapshot,} from "./ThreadGoalSnapshot";
 
 const IMPLEMENT_PLAN_OPTION_ID = "implement_plan";
 const REVISE_PLAN_OPTION_ID = "revise_plan";
@@ -201,6 +207,7 @@ export class CodexAcpServer {
     private readonly closingSessions: Map<string, number>;
     private readonly sessionGenerations: Map<string, number>;
     private readonly sessionOpenGenerations: Map<string, number>;
+    private readonly goalControlGenerations: Map<string, number>;
 
     constructor(
         connection: AcpClientConnection,
@@ -218,6 +225,7 @@ export class CodexAcpServer {
         this.closingSessions = new Map();
         this.sessionGenerations = new Map();
         this.sessionOpenGenerations = new Map();
+        this.goalControlGenerations = new Map();
         this.connection = connection;
         this.codexAcpClient = codexAcpClient;
         this.defaultAuthRequest = defaultAuthRequest ?? null;
@@ -288,6 +296,11 @@ export class CodexAcpServer {
                 steering: {
                     supported: true,
                 },
+                goal: {
+                    version: GOAL_EXTENSION_VERSION,
+                    controlMethod: GOAL_CONTROL_METHOD,
+                    actions: [...GOAL_CONTROL_ACTIONS],
+                },
             },
         };
     }
@@ -308,16 +321,57 @@ export class CodexAcpServer {
                 return await this.unstable_setSessionModel(this.parseLegacySetSessionModelParams(methodRequest.params));
             case SESSION_STEERING_METHOD:
                 return await this.executeOrQueueSteeringRequest(this.parseSessionSteerParams(methodRequest.params));
-            case GOAL_CONTROL_METHOD: {
+            case GOAL_CONTROL_METHOD:
+            case LEGACY_GOAL_CONTROL_METHOD: {
                 const sessionState = this.sessions.get(methodRequest.params.sessionId);
                 if (!sessionState) {
                     throw RequestError.invalidParams(undefined, `Unknown session: ${methodRequest.params.sessionId}`);
                 }
                 const sessionGeneration = this.getSessionGeneration(sessionState.sessionId);
-                if (methodRequest.params.action === "pause") {
+                const goalControlGeneration = this.bumpGoalControlGeneration(sessionState.sessionId);
+                if (methodRequest.params.action === "set") {
+                    const objective = methodRequest.params.objective;
+                    let updatedGoal: ThreadGoal | null = null;
+                    const turnCompleted = await this.runWithProcessCheck(() => this.codexAcpClient.setGoal(
+                        sessionState.sessionId,
+                        objective,
+                        undefined,
+                        (goal) => {
+                            updatedGoal = goal;
+                        },
+                    ));
+                    if (turnCompleted === null && updatedGoal !== null) {
+                        await this.startGoalContinuationIfCurrent(
+                            sessionState,
+                            sessionGeneration,
+                            goalControlGeneration,
+                            updatedGoal,
+                        );
+                    }
+                } else if (methodRequest.params.action === "pause") {
                     const goal = await this.runWithProcessCheck(() => this.codexAcpClient.setGoalStatus(sessionState.sessionId, "paused"));
                     if (this.goalPublishIsCurrent(sessionState, sessionGeneration)) {
                         await this.publishGoalSnapshot(sessionState, toThreadGoalSnapshot(goal), false);
+                    }
+                } else if (methodRequest.params.action === "resume") {
+                    let updatedGoal: ThreadGoal | null = null;
+                    const turnCompleted = await this.runWithProcessCheck(() => this.codexAcpClient.resumeGoal(
+                        sessionState.sessionId,
+                        undefined,
+                        (goal) => {
+                            updatedGoal = goal;
+                        },
+                    ));
+                    if (updatedGoal !== null && this.goalPublishIsCurrent(sessionState, sessionGeneration)) {
+                        await this.publishGoalSnapshot(sessionState, toThreadGoalSnapshot(updatedGoal), false);
+                    }
+                    if (turnCompleted === null && updatedGoal !== null) {
+                        await this.startGoalContinuationIfCurrent(
+                            sessionState,
+                            sessionGeneration,
+                            goalControlGeneration,
+                            updatedGoal,
+                        );
                     }
                 } else if (methodRequest.params.action === "clear") {
                     await this.runWithProcessCheck(() => this.codexAcpClient.clearGoal(sessionState.sessionId));
@@ -434,6 +488,12 @@ export class CodexAcpServer {
 
     private getSessionGeneration(sessionId: string): number {
         return this.sessionGenerations.get(sessionId) ?? 0;
+    }
+
+    private bumpGoalControlGeneration(sessionId: string): number {
+        const generation = (this.goalControlGenerations.get(sessionId) ?? 0) + 1;
+        this.goalControlGenerations.set(sessionId, generation);
+        return generation;
     }
 
     private bumpSessionGeneration(sessionId: string): number {
@@ -761,6 +821,7 @@ export class CodexAcpServer {
                 this.activePrompts.delete(params.sessionId);
                 this.pendingSteers.delete(params.sessionId);
                 this.steeringQueues.delete(params.sessionId);
+                this.goalControlGenerations.delete(params.sessionId);
             }
             this.endSessionCloseFence(params.sessionId);
         }
@@ -840,9 +901,11 @@ export class CodexAcpServer {
 
     async authenticate(
         _params: acp.AuthenticateRequest,
+        requestId?: acp.JsonRpcId,
     ): Promise<acp.AuthenticateResponse> {
         logger.log("Authenticate request received");
-        const isAuthenticated = await this.runWithProcessCheck(() => this.codexAcpClient.authenticate(_params));
+        const elicitationRequester = this.createUrlElicitationRequester(requestId);
+        const isAuthenticated = await this.runWithProcessCheck(() => this.codexAcpClient.authenticate(_params, elicitationRequester));
         if (!isAuthenticated) {
             logger.log("Authenticate request failed");
             throw RequestError.invalidParams();
@@ -850,6 +913,19 @@ export class CodexAcpServer {
         await this.refreshSessionsAuthState(this.getAuthProviderForAuthenticateRequest(_params));
         logger.log("Authenticate request completed");
         return { };
+    }
+
+    private createUrlElicitationRequester(requestId?: acp.JsonRpcId): UrlElicitationRequester | undefined {
+        if (requestId == null || !clientSupportsUrlElicitation(this.clientCapabilities)) {
+            return undefined;
+        }
+        return {
+            elicitUrl: (request) => this.connection.request(acp.methods.client.elicitation.create, {
+                mode: "url",
+                requestId,
+                ...request,
+            }),
+        };
     }
 
     async logout(_params: acp.LogoutRequest): Promise<void> {
@@ -1225,25 +1301,58 @@ export class CodexAcpServer {
      *     fails or is cancelled before the turn starts.
      */
     private async startNewTurnFromSteering(params: SessionSteerRequest): Promise<SessionSteeringResponse> {
-        // A prompt can outlive its turn (post-turn cleanup runs before it leaves
-        // activePrompts), so a steer can miss the turn while the prompt is still
-        // winding down. Starting a new turn now would run a second prompt on the
-        // same session, so wait for the current one to drain first (a no-op when idle).
+        await this.startNewTurnFromExternalPrompt(params, "Steering");
+        return {outcome: "startedNewTurn"};
+    }
+
+    private async startGoalContinuationIfCurrent(
+        sessionState: SessionState,
+        sessionGeneration: number,
+        goalControlGeneration: number,
+        expectedGoal: ThreadGoal,
+    ): Promise<void> {
+        await this.startNewTurnFromExternalPrompt({
+            sessionId: sessionState.sessionId,
+            prompt: GOAL_CONTINUATION_PROMPT,
+        }, "Goal continuation", async () => {
+            if (!this.goalPublishIsCurrent(sessionState, sessionGeneration)
+                || this.goalControlGenerations.get(sessionState.sessionId) !== goalControlGeneration) {
+                return false;
+            }
+            const currentGoal = await this.runWithProcessCheck(() => this.codexAcpClient.getGoal(sessionState.sessionId));
+            return currentGoal?.status === "active"
+                && currentGoal.objective === expectedGoal.objective
+                && currentGoal.createdAt === expectedGoal.createdAt
+                && this.goalControlGenerations.get(sessionState.sessionId) === goalControlGeneration;
+        });
+    }
+
+    private async startNewTurnFromExternalPrompt(
+        params: acp.PromptRequest,
+        source: string,
+        canStart: () => Promise<boolean> = async () => true,
+    ): Promise<boolean> {
+        // A prompt can outlive its turn while post-turn cleanup runs. Starting a
+        // control-triggered turn during that window would run two prompts on the
+        // same session, so wait for the current prompt to drain first.
         const previousPrompt = this.activePrompts.get(params.sessionId);
         await previousPrompt?.completion;
         if (this.sessionIsClosing(params.sessionId)) {
             throw RequestError.invalidRequest(`Session ${params.sessionId} is closing`);
         }
+        if (!await canStart()) {
+            return false;
+        }
 
-        return await new Promise<SessionSteeringResponse>((resolve, reject) => {
+        return await new Promise<boolean>((resolve, reject) => {
             let turnStarted = false;
             const promptDone = this.prompt(params, undefined, () => {
                 turnStarted = true;
-                logger.log("Steering session started a new turn", {sessionId: params.sessionId});
+                logger.log(`${source} started a new turn`, {sessionId: params.sessionId});
                 // The new turn is now running. This is the success path: answer the
                 // steer immediately ("a turn was started") and let prompt() finish the
                 // turn in the background.
-                resolve({outcome: "startedNewTurn"});
+                resolve(true);
             });
             promptDone.then(
                 (response) => {
@@ -1256,7 +1365,7 @@ export class CodexAcpServer {
                         // resolve in the callback above), or the prompt finished
                         // without ever starting a turn and was not cancelled (e.g. a
                         // command-only turn). Both count as a successfully accepted steer.
-                        resolve({outcome: "startedNewTurn"});
+                        resolve(turnStarted);
                     }
                 },
                 (error: unknown) => {
@@ -1264,7 +1373,7 @@ export class CodexAcpServer {
                         // The turn had already started, so the steer was already
                         // answered "startedNewTurn". This is a failure of a turn running
                         // in the background — nothing to return, just log it.
-                        logger.error(`Steering-started prompt for session ${params.sessionId} failed`, error);
+                        logger.error(`${source} prompt for session ${params.sessionId} failed`, error);
                     } else {
                         // The prompt failed before the turn started. The steer never
                         // took, so surface the failure to the caller.
@@ -1415,9 +1524,7 @@ export class CodexAcpServer {
         await session.update({
             sessionUpdate: "session_info_update",
             _meta: {
-                codex: {
-                    goal: snapshot,
-                },
+                goal: snapshot,
             },
         });
     }
@@ -2228,6 +2335,10 @@ export class CodexAcpServer {
                 };
             }
 
+            const effectiveParams = commandResult.prompt === undefined
+                ? params
+                : {...params, prompt: commandResult.prompt};
+
             if (this.sessionIsClosing(params.sessionId)) {
                 return this.cancelledPromptResponse(sessionState);
             }
@@ -2244,7 +2355,7 @@ export class CodexAcpServer {
                 });
             }
 
-            if (!sessionState.supportedInputModalities.includes("image") && params.prompt.some(b => b.type === "image")) {
+            if (!sessionState.supportedInputModalities.includes("image") && effectiveParams.prompt.some(b => b.type === "image")) {
                 throw RequestError.invalidRequest("The current model does not support image input");
             }
             const agentMode = sessionState.agentMode;
@@ -2255,7 +2366,7 @@ export class CodexAcpServer {
             ensurePendingTurnStart();
             const sendPromptPromise = this.runWithProcessCheck(
                 () => this.codexAcpClient.sendPrompt(
-                    params,
+                    effectiveParams,
                     agentMode,
                     modelId,
                     serviceTier,

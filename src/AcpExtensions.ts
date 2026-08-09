@@ -7,6 +7,23 @@ import type {
     ResumeSessionResponse,
     SessionId,
 } from "@agentclientprotocol/sdk";
+import {
+    GOAL_CONTROL_METHOD,
+    LEGACY_GOAL_CONTROL_METHOD,
+    type GoalControlRequest,
+} from "./GoalExtension";
+
+export {
+    GOAL_CONTROL_ACTIONS,
+    GOAL_CONTROL_METHOD,
+    GOAL_EXTENSION_VERSION,
+    LEGACY_GOAL_CONTROL_METHOD,
+    type GoalCapability,
+    type GoalControlAction,
+    type GoalControlRequest,
+    type GoalSnapshot,
+    type GoalStatus,
+} from "./GoalExtension";
 
 export const LEGACY_SET_SESSION_MODEL_METHOD = "session/set_model";
 export const ACP_EXT_SESSION_USAGE_UPDATE_METHOD = "_acp_ext:session_usage_update";
@@ -14,7 +31,6 @@ export const ACP_EXT_SESSION_RATE_LIMITS_METHOD = "_acp_ext:session_rate_limits"
 export const ACP_EXT_CODEX_PROPOSED_PLAN_METHOD = "_acp_ext:codex_proposed_plan";
 export const CODEX_STEER_APPLIED_METHOD = "_codex/steerApplied";
 export const SESSION_STEERING_METHOD = "_session/steering";
-export const GOAL_CONTROL_METHOD = "_codex/session/goal_control";
 export function getLodyForkTurnId(meta: unknown): string | null {
     if (typeof meta !== "object" || meta === null) return null;
     const lody = (meta as Record<string, unknown>)["lody"];
@@ -126,6 +142,7 @@ export function isExtMethodRequest(request: { method: string, params: Record<str
         || request.method === "authentication/logout"
         || request.method === LEGACY_SET_SESSION_MODEL_METHOD
         || request.method === GOAL_CONTROL_METHOD
+        || request.method === LEGACY_GOAL_CONTROL_METHOD
         || request.method === SESSION_STEERING_METHOD;
 }
 
@@ -140,13 +157,8 @@ export type LegacySetSessionModelExtRequest = {
     params: LegacySetSessionModelRequest;
 }
 
-export type GoalControlRequest = {
-    sessionId: SessionId;
-    action: "pause" | "clear";
-}
-
 export type GoalControlExtRequest = {
-    method: typeof GOAL_CONTROL_METHOD;
+    method: typeof GOAL_CONTROL_METHOD | typeof LEGACY_GOAL_CONTROL_METHOD;
     params: GoalControlRequest;
 }
 

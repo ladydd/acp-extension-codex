@@ -1,4 +1,32 @@
 {
+  "method": "notify",
+  "args": [
+    "_acp_ext:codex_proposed_plan",
+    {
+      "schemaVersion": 1,
+      "sessionId": "test-session-id",
+      "turnId": "turn-1",
+      "markdown": "### Buffered plan\n\n",
+      "status": "delta",
+      "isLatest": true
+    }
+  ]
+}
+{
+  "method": "notify",
+  "args": [
+    "_acp_ext:codex_proposed_plan",
+    {
+      "schemaVersion": 1,
+      "sessionId": "test-session-id",
+      "turnId": "turn-1",
+      "markdown": "### Buffered plan\n\n1. Use the buffered fallback.",
+      "status": "delta",
+      "isLatest": true
+    }
+  ]
+}
+{
   "method": "sessionUpdate",
   "args": [
     {

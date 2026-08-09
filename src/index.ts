@@ -34,10 +34,17 @@ const sessionSteerParamsParser = z.object({
     steerId: z.string().min(1).optional(),
 }).passthrough();
 
-const goalControlParamsParser = z.object({
-    sessionId: z.string(),
-    action: z.enum(["pause", "clear"]),
-}).passthrough();
+const goalControlParamsParser = z.discriminatedUnion("action", [
+    z.object({
+        sessionId: z.string(),
+        action: z.literal("set"),
+        objective: z.string().trim().min(1),
+    }).passthrough(),
+    z.object({
+        sessionId: z.string(),
+        action: z.enum(["pause", "resume", "clear"]),
+    }).passthrough(),
+]);
 
 if (process.argv.includes("--version")) {
     console.log(`${packageJson.name} ${packageJson.version}`);
@@ -138,7 +145,7 @@ function startAcpServer() {
         .onRequest(acp.methods.agent.session.close, (ctx) => getAgent().closeSession(ctx.params))
         .onRequest(acp.methods.agent.session.setMode, (ctx) => getAgent().setSessionMode(ctx.params))
         .onRequest(acp.methods.agent.session.setConfigOption, (ctx) => getAgent().setSessionConfigOption(ctx.params))
-        .onRequest(acp.methods.agent.authenticate, (ctx) => getAgent().authenticate(ctx.params))
+        .onRequest(acp.methods.agent.authenticate, (ctx) => getAgent().authenticate(ctx.params, ctx.requestId))
         .onRequest(acp.methods.agent.logout, (ctx) => getAgent().logout(ctx.params))
         .onRequest(acp.methods.agent.providers.list, (ctx) => getAgent().listProviders(ctx.params))
         .onRequest(acp.methods.agent.providers.set, (ctx) => getAgent().setProvider(ctx.params))
