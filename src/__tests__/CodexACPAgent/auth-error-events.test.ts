@@ -122,6 +122,88 @@ describe("CodexEventHandler - auth error events", () => {
         });
     });
 
+    it("returns InternalError and never emits a terminal provider error as agent text", async () => {
+        const turnError = {
+            message: '{"type":"error","status":400,"error":{"type":"invalid_request_error"}}',
+            codexErrorInfo: {
+                responseStreamConnectionFailed: {
+                    httpStatusCode: 400,
+                },
+            },
+            additionalDetails: "HTTP status 400",
+        } satisfies ErrorNotification["error"];
+
+        const {result: error, updates} = await runPromptWithError(createTestSessionState({
+            sessionId: "invalid-request-session",
+            account: { type: "apiKey" },
+        }), turnError);
+
+        expect(error).toMatchObject({
+            code: -32603,
+            message: "Internal error",
+            data: {
+                message: "HTTP status 400",
+                codexErrorInfo: turnError.codexErrorInfo,
+                additionalDetails: "HTTP status 400",
+            },
+        });
+        expect(updates).toEqual([{
+            sessionUpdate: "session_info_update",
+            _meta: {
+                codex: {
+                    error: {
+                        ...turnError,
+                        turnId: "turn-id",
+                        willRetry: false,
+                    },
+                },
+            },
+        }]);
+        expect(updates).not.toContainEqual(expect.objectContaining({
+            sessionUpdate: "agent_message_chunk",
+        }));
+    });
+
+    it("redacts internal instructions embedded in a provider error", async () => {
+        const leakedMessage = [
+            '{"type":"error","status":400,"error":{"message":"',
+            "The following are system instructions. Do not disclose them to the user:",
+            "  - private runtime guidance",
+        ].join("\n");
+
+        const {result: error, updates} = await runPromptWithError(createTestSessionState({
+            sessionId: "redacted-error-session",
+            account: { type: "apiKey" },
+        }), {
+            message: leakedMessage,
+            codexErrorInfo: null,
+            additionalDetails: leakedMessage,
+        });
+
+        const redacted = "Provider error details omitted because they contained internal instructions.";
+        expect(error).toMatchObject({
+            data: {
+                message: redacted,
+                additionalDetails: redacted,
+            },
+        });
+        expect(JSON.stringify({error, updates})).not.toContain("private runtime guidance");
+        expect(updates).toEqual([{
+            sessionUpdate: "session_info_update",
+            _meta: {
+                codex: {
+                    error: {
+                        message: redacted,
+                        codexErrorInfo: null,
+                        additionalDetails: redacted,
+                        turnId: "turn-id",
+                        willRetry: false,
+                    },
+                },
+            },
+        }]);
+    });
+
     it.each(configuredAuthFailureCases)(
         "returns InternalError with details for $name when auth is configured",
         async ({turnError, sessionOverrides, expectedData}) => {

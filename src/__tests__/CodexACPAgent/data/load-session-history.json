@@ -28,7 +28,12 @@
       "sessionId": "session-1",
       "update": {
         "sessionUpdate": "session_info_update",
-        "title": "Saved title"
+        "title": "Saved title",
+        "_meta": {
+          "codex": {
+            "titleSource": "explicit"
+          }
+        }
       }
     }
   ]

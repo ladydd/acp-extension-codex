@@ -5,7 +5,12 @@
       "sessionId": "test-session-id",
       "update": {
         "sessionUpdate": "session_info_update",
-        "title": "Fix the flaky test in CI"
+        "title": "Fix the flaky test in CI",
+        "_meta": {
+          "codex": {
+            "titleSource": "fallback"
+          }
+        }
       }
     }
   ]

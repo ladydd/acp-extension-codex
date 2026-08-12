@@ -5,7 +5,12 @@
       "sessionId": "test-session-id",
       "update": {
         "sessionUpdate": "session_info_update",
-        "title": "Renamed session"
+        "title": "Renamed session",
+        "_meta": {
+          "codex": {
+            "titleSource": "explicit"
+          }
+        }
       }
     }
   ]
@@ -17,7 +22,12 @@
       "sessionId": "test-session-id",
       "update": {
         "sessionUpdate": "session_info_update",
-        "title": null
+        "title": null,
+        "_meta": {
+          "codex": {
+            "titleSource": "unset"
+          }
+        }
       }
     }
   ]

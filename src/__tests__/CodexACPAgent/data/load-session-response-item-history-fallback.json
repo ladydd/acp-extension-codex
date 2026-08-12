@@ -19,7 +19,12 @@
       "sessionId": "session-legacy",
       "update": {
         "sessionUpdate": "session_info_update",
-        "title": "List the files"
+        "title": "List the files",
+        "_meta": {
+          "codex": {
+            "titleSource": "fallback"
+          }
+        }
       }
     }
   ]
