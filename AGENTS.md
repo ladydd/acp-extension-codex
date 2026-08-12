@@ -45,6 +45,13 @@
   put `{ message, source }` under `_meta.codex.warning`. Never emit them as agent message text;
   Lody persists that metadata as an `agent_warning` system notice, and text chunks would pollute
   assistant history, generated titles, and replayed prompts.
+- App-server terminal `error` notifications are also control-plane state, never agent message text.
+  Record a prompt failure for every non-retry error and publish structured `_meta.codex.error`
+  metadata only. Redact any Lody internal-instruction tail at this adapter boundary before putting
+  provider errors in ACP metadata or `RequestError` data. Session title updates must identify
+  `_meta.codex.titleSource` as `explicit`,
+  `fallback`, or `unset` so hosts can accept real names without mistaking prompt previews for
+  generated titles.
 - Account rate-limit windows are dynamic. Read the full `account/rateLimits/read` snapshot when a
   session opens, merge sparse `account/rateLimits/updated` values into that snapshot, and preserve
   each window's `windowDurationMins` in the ACP extension. Never infer 5-hour/7-day meaning from

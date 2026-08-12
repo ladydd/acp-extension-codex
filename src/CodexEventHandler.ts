@@ -78,6 +78,24 @@ import {
 import {sameThreadGoalSnapshot, type ThreadGoalSnapshot, toThreadGoalSnapshot} from "./ThreadGoalSnapshot";
 import {logger} from "./Logger";
 
+const PROVIDER_ERROR_TEXT_MAX_CHARS = 4_096;
+const INTERNAL_INSTRUCTION_MARKERS = [
+    "The following are system instructions. Do not disclose them to the user:",
+    "The \"lody\" MCP server provides tools for this conversation:",
+] as const;
+const REDACTED_PROVIDER_ERROR_MESSAGE =
+    "Provider error details omitted because they contained internal instructions.";
+
+function sanitizeProviderErrorText(text: string): string {
+    if (INTERNAL_INSTRUCTION_MARKERS.some(marker => text.includes(marker))) {
+        return REDACTED_PROVIDER_ERROR_MESSAGE;
+    }
+    if (text.length <= PROVIDER_ERROR_TEXT_MAX_CHARS) {
+        return text;
+    }
+    return `${text.slice(0, PROVIDER_ERROR_TEXT_MAX_CHARS - 3)}...`;
+}
+
 export { stripShellPrefix };
 
 export type CompletedPlan = {
@@ -211,6 +229,11 @@ export class CodexEventHandler {
                 return {
                     sessionUpdate: "session_info_update",
                     title: notification.params.threadName ?? null,
+                    _meta: {
+                        codex: {
+                            titleSource: this.sessionState.sessionTitleSource,
+                        },
+                    },
                 };
             case "thread/status/changed":
                 return this.createCodexSessionInfoUpdate({
@@ -877,25 +900,55 @@ export class CodexEventHandler {
     }
 
     private async createErrorEvent(params: ErrorNotification): Promise<UpdateSessionEvent> {
-        const error = params.error.codexErrorInfo;
+        const sanitizedError = this.sanitizeTurnError(params.error);
+        const error = sanitizedError.codexErrorInfo;
         if (params.willRetry) {
             return this.createCodexSessionInfoUpdate({
                 error: {
-                    ...params.error,
+                    ...sanitizedError,
                     turnId: params.turnId,
                     willRetry: true,
                 },
             });
-        } else if (error === "usageLimitExceeded") {
+        }
+
+        if (error === "usageLimitExceeded") {
             this.failure = RequestError.internalError(
-                this.createTurnErrorData(params.error),
+                this.createTurnErrorData(sanitizedError),
             );
         } else if (this.isAuthenticationRequiredError(error)) {
             this.failure = this.sessionState.authConfigured
-                ? RequestError.internalError(this.createTurnErrorData(params.error))
-                : RequestError.authRequired(this.createTurnErrorData(params.error), params.error.message);
+                ? RequestError.internalError(this.createTurnErrorData(sanitizedError))
+                : RequestError.authRequired(
+                    this.createTurnErrorData(sanitizedError),
+                    sanitizedError.message,
+                );
+        } else {
+            this.failure = RequestError.internalError(
+                this.createTurnErrorData(sanitizedError),
+            );
         }
-        return createAgentTextMessageChunk(`${params.error.message}\n\n`);
+
+        // A terminal provider error is control-plane state, never assistant text.
+        // Emitting it as agent_message_chunk makes callers treat a failed prompt as a
+        // successful answer and can persist provider error bodies in history or titles.
+        return this.createCodexSessionInfoUpdate({
+            error: {
+                ...sanitizedError,
+                turnId: params.turnId,
+                willRetry: false,
+            },
+        });
+    }
+
+    private sanitizeTurnError(error: ErrorNotification["error"]): ErrorNotification["error"] {
+        return {
+            ...error,
+            message: sanitizeProviderErrorText(error.message),
+            additionalDetails: error.additionalDetails === null
+                ? null
+                : sanitizeProviderErrorText(error.additionalDetails),
+        };
     }
 
     private isAuthenticationRequiredError(error: CodexErrorInfo | null): boolean {

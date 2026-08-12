@@ -1695,6 +1695,11 @@ export class CodexAcpServer {
             await session.update({
                 sessionUpdate: "session_info_update",
                 title: explicitTitle,
+                _meta: {
+                    codex: {
+                        titleSource: "explicit",
+                    },
+                },
             });
             return;
         }
@@ -1729,6 +1734,11 @@ export class CodexAcpServer {
         await session.update({
             sessionUpdate: "session_info_update",
             title,
+            _meta: {
+                codex: {
+                    titleSource: "fallback",
+                },
+            },
         });
     }
 
