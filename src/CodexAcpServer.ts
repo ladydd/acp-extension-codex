@@ -585,6 +585,11 @@ export class CodexAcpServer {
         const authProvider = sessionMetadata.modelProvider ?? this.codexAcpClient.getModelProvider();
         let authState: ActiveAuthState;
         try {
+            await this.ensureRequiredMcpServersStarted(
+                sessionId,
+                requestedMcpServers,
+                mcpServerStartupVersion,
+            );
             authState = await this.getAuthStateForProvider(authProvider);
         } catch (err) {
             if (subscribed) {
@@ -1592,6 +1597,11 @@ export class CodexAcpServer {
         const authProvider = sessionMetadata.modelProvider ?? this.codexAcpClient.getModelProvider();
         let authState: ActiveAuthState;
         try {
+            await this.ensureRequiredMcpServersStarted(
+                sessionId,
+                requestedMcpServers,
+                mcpServerStartupVersion,
+            );
             authState = await this.getAuthStateForProvider(authProvider);
         } catch (err) {
             if (subscribed) {
@@ -1933,6 +1943,40 @@ export class CodexAcpServer {
         return [];
     }
 
+    private async ensureRequiredMcpServersStarted(
+        sessionId: string,
+        mcpServers: Array<acp.McpServer>,
+        afterVersion: number | null,
+    ): Promise<void> {
+        const requiredServers = getRequiredMcpServerNames(mcpServers);
+        if (requiredServers.length === 0 || afterVersion === null) {
+            return;
+        }
+
+        const startup = await this.runWithProcessCheck(() =>
+            this.codexAcpClient.awaitMcpServerStartup(
+                sessionId,
+                requiredServers,
+                afterVersion,
+            )
+        );
+        if (startup.failed.length === 0 && startup.cancelled.length === 0) {
+            return;
+        }
+
+        const failures = [
+            ...startup.failed.map(({server, error}) => `${server}: ${error}`),
+            ...startup.cancelled.map(server => `${server}: startup cancelled`),
+        ];
+        throw RequestError.internalError(
+            {
+                requiredMcpServers: requiredServers,
+                startup,
+            },
+            `Required MCP server startup failed (${failures.join("; ")})`,
+        );
+    }
+
     private publishMcpStartupStatusAsync(sessionId: string): void {
         void this.doPublishMcpStartupStatus(sessionId);
     }
@@ -1946,6 +1990,7 @@ export class CodexAcpServer {
         try {
             const mcpStartup = await this.runWithProcessCheck(() =>
                 this.codexAcpClient.awaitMcpServerStartup(
+                    sessionId,
                     Array.from(pendingStartup.requestedServers),
                     pendingStartup.afterVersion,
                 )
@@ -2736,4 +2781,21 @@ function historyUpdateContentKey(update: UpdateSessionEvent): string | null {
 
 function getRequestedMcpServerNames(mcpServers: Array<acp.McpServer>): Array<string> {
     return Array.from(new Set(mcpServers.map(server => sanitizeMcpServerName(server.name))));
+}
+
+function getRequiredMcpServerNames(mcpServers: Array<acp.McpServer>): Array<string> {
+    return Array.from(new Set(mcpServers
+        .filter(server => {
+            const lodyMeta = server._meta?.["lody"];
+            if (!isRecord(lodyMeta)) {
+                return false;
+            }
+            const startup = lodyMeta["startup"];
+            return isRecord(startup) && startup["required"] === true;
+        })
+        .map(server => sanitizeMcpServerName(server.name))));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

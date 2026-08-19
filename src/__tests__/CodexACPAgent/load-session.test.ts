@@ -581,7 +581,7 @@ describe("CodexACPAgent - loadSession", () => {
         }
     });
 
-    it("publishes MCP startup failure for explicitly requested servers during loadSession", async () => {
+    it("rejects and rolls back loadSession when a required MCP server fails to start", async () => {
         const fixture = createCodexMockTestFixture();
         const codexAcpAgent = fixture.getCodexAcpAgent();
         const codexAcpClient = fixture.getCodexAcpClient();
@@ -643,18 +643,31 @@ describe("CodexACPAgent - loadSession", () => {
             name: null,
             turns: [],
         };
-        codexAppServerClient.threadResume = vi.fn().mockResolvedValue({
-            thread: thread,
-            model: model.id,
-            modelProvider: "openai",
-            cwd: "/test/project",
-            approvalPolicy: "never",
-            sandbox: { type: "dangerFullAccess" },
-            reasoningEffort: model.defaultReasoningEffort,
+        codexAppServerClient.threadResume = vi.fn().mockImplementation(async () => {
+            queueMicrotask(() => fixture.sendServerNotification({
+                method: "mcpServer/startupStatus/updated",
+                params: {
+                    threadId: "session-1",
+                    name: "broken-mcp",
+                    status: "failed",
+                    error: "boom",
+                },
+            }));
+            return {
+                thread: thread,
+                model: model.id,
+                modelProvider: "openai",
+                cwd: "/test/project",
+                approvalPolicy: "never",
+                sandbox: { type: "dangerFullAccess" },
+                reasoningEffort: model.defaultReasoningEffort,
+            } as any;
         });
         codexAppServerClient.threadRead = vi.fn().mockResolvedValue({
             thread: thread,
         });
+        const threadUnsubscribe = vi.spyOn(codexAppServerClient, "threadUnsubscribe")
+            .mockResolvedValue({} as any);
 
         await codexAcpAgent.initialize({ protocolVersion: 1 });
 
@@ -666,24 +679,20 @@ describe("CodexACPAgent - loadSession", () => {
                 command: "npx",
                 args: ["broken"],
                 env: [],
+                _meta: {
+                    lody: {
+                        startup: { required: true },
+                    },
+                },
             }],
         });
 
-        await vi.waitFor(() => {
-            expect(codexAcpAgent.getSessionState("session-1").sessionMcpServers).toEqual(["broken-mcp"]);
-        });
-
-        fixture.sendServerNotification({
-            method: "mcpServer/startupStatus/updated",
-            params: { threadId: "session-1", name: "broken-mcp", status: "failed", error: "boom" }
-        });
-
-        await loadPromise;
-
-        await vi.waitFor(() => {
-            const dump = fixture.getAcpConnectionDump([]);
-            expect(dump).toContain('"toolCallId": "mcp_startup.broken-mcp"');
-            expect(dump).toContain('MCP server `broken-mcp` failed to start: boom');
-        });
+        await expect(loadPromise).rejects.toThrow(
+            "Required MCP server startup failed (broken-mcp: boom)",
+        );
+        expect(() => codexAcpAgent.getSessionState("session-1")).toThrow(
+            "Session session-1 not found",
+        );
+        expect(threadUnsubscribe).toHaveBeenCalledWith({threadId: "session-1"});
     });
 });

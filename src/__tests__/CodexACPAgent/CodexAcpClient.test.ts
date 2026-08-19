@@ -774,6 +774,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
         const codexAppServerClient = mockFixture.getCodexAppServerClient();
 
         const startupPromise = codexAcpClient.awaitMcpServerStartup(
+            "thread-id",
             ["alpha", "beta"],
             codexAppServerClient.getMcpServerStartupVersion()
         );
@@ -802,6 +803,135 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             failed: [],
             cancelled: [],
         });
+    });
+
+    it('rejects MCP startup waiters when the Codex connection closes', async () => {
+        const mockFixture = createCodexMockTestFixture();
+        const startupPromise = mockFixture.getCodexAcpClient().awaitMcpServerStartup(
+            "thread-id",
+            ["lody"],
+            mockFixture.getCodexAppServerClient().getMcpServerStartupVersion(),
+        );
+
+        mockFixture.closeCodexConnection();
+
+        await expect(startupPromise).rejects.toThrow(
+            "Codex process exited before MCP server startup completed",
+        );
+    });
+
+    it('isolates MCP startup status by Codex thread', async () => {
+        const mockFixture = createCodexMockTestFixture();
+        const startupPromise = mockFixture.getCodexAcpClient().awaitMcpServerStartup(
+            "thread-one",
+            ["lody"],
+            mockFixture.getCodexAppServerClient().getMcpServerStartupVersion(),
+        );
+        let settled = false;
+        void startupPromise.then(() => {
+            settled = true;
+        });
+
+        mockFixture.sendServerNotification({
+            method: "mcpServer/startupStatus/updated",
+            params: {
+                threadId: "thread-two",
+                name: "lody",
+                status: "ready",
+                error: null,
+            },
+        });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        mockFixture.sendServerNotification({
+            method: "mcpServer/startupStatus/updated",
+            params: {
+                threadId: "thread-one",
+                name: "lody",
+                status: "ready",
+                error: null,
+            },
+        });
+        await expect(startupPromise).resolves.toEqual({
+            ready: ["lody"],
+            failed: [],
+            cancelled: [],
+        });
+    });
+
+    it('rejects MCP startup waiters when their Codex thread closes', async () => {
+        const mockFixture = createCodexMockTestFixture();
+        const startupPromise = mockFixture.getCodexAcpClient().awaitMcpServerStartup(
+            "thread-one",
+            ["lody"],
+            mockFixture.getCodexAppServerClient().getMcpServerStartupVersion(),
+        );
+
+        mockFixture.getCodexAppServerClient().clearThreadHandlers("thread-one");
+
+        await expect(startupPromise).rejects.toThrow(
+            "Codex thread thread-one closed during MCP startup",
+        );
+    });
+
+    it('waits for required MCP startup before completing a new session', async () => {
+        const mockFixture = createCodexMockTestFixture();
+        const codexAcpAgent = mockFixture.getCodexAcpAgent();
+        const codexAppServerClient = mockFixture.getCodexAppServerClient();
+        let resolveThreadStarted: () => void = () => {};
+        const threadStarted = new Promise<void>((resolve) => {
+            resolveThreadStarted = resolve;
+        });
+
+        vi.spyOn(codexAcpAgent, "checkAuthorization").mockResolvedValue(undefined);
+        vi.spyOn(codexAppServerClient, "threadStart").mockImplementation(async () => {
+            resolveThreadStarted();
+            return {
+                thread: { id: "thread-id" } as any,
+                model: "gpt-5",
+                reasoningEffort: "medium",
+            } as any;
+        });
+        vi.spyOn(codexAppServerClient, "listModels").mockResolvedValue({
+            data: [createTestModel({ id: "gpt-5" })],
+            nextCursor: null,
+        });
+        vi.spyOn(codexAppServerClient, "accountRead").mockResolvedValue({
+            requiresOpenaiAuth: false,
+            account: null,
+        } as any);
+        vi.spyOn(codexAppServerClient, "listSkills").mockResolvedValue({ data: [] });
+
+        const sessionPromise = codexAcpAgent.newSession({
+            cwd: "/workspace",
+            mcpServers: [{
+                name: "lody",
+                command: "lody-mcp",
+                args: [],
+                env: [],
+                _meta: {
+                    lody: {
+                        startup: { required: true },
+                    },
+                },
+            }],
+        });
+
+        await threadStarted;
+        mockFixture.sendServerNotification({
+            method: "mcpServer/startupStatus/updated",
+            params: {
+                threadId: "thread-id",
+                name: "lody",
+                status: "ready",
+                error: null,
+            },
+        });
+
+        await expect(sessionPromise).resolves.toEqual(
+            expect.objectContaining({ sessionId: "thread-id" }),
+        );
     });
 
     it('forwards failed MCP startup as failed tool call updates after new session', async () => {

@@ -173,7 +173,11 @@ describe("ACP session close", () => {
         vi.spyOn(codexAcpClient, "closeSession").mockReturnValue(unsubscribe.promise);
 
         await vi.waitFor(() => {
-            expect(codexAcpClient.awaitMcpServerStartup).toHaveBeenCalledWith(["broken-mcp"], expect.any(Number));
+            expect(codexAcpClient.awaitMcpServerStartup).toHaveBeenCalledWith(
+                sessionId,
+                ["broken-mcp"],
+                expect.any(Number),
+            );
         });
         fixture.clearAcpConnectionDump();
 

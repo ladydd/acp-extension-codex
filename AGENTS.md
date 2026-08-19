@@ -20,6 +20,15 @@
 - Lody may launch the adapter from an Electron or daemon process with no Windows console.
   Set `windowsHide: true` on every adapter-owned console-subsystem child process spawn;
   `ELECTRON_RUN_AS_NODE` is a separate runtime-mode concern.
+- Client-provided MCP servers are best effort by default and keep publishing
+  startup failures as structured ACP updates. A server marked with
+  `_meta.lody.startup.required = true` is a session-open dependency: wait for
+  its terminal Codex startup status before returning from new/load/resume/fork,
+  and roll back the opened thread with a request error on failure or cancellation.
+  Key startup state by Codex thread plus sanitized server name so concurrent
+  sessions using the same MCP name cannot settle each other's waiters. Clear
+  that state on thread close, and reject waiters when either the thread or Codex
+  connection closes.
 - When updating discriminated-union/event `switch` statements, do not add a trailing fallback like `return null` only to satisfy TypeScript.
 - Handle each variant with an explicit `case`; if intentionally ignored, use an explicit no-op case.
 
