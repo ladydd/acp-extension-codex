@@ -98,7 +98,13 @@ export function createBaseTestFixture(config: ConnectionConfig): TestFixture {
 
     const codexAppServerClient = new CodexAppServerClient(config.connection);
     const codexAcpClient = new CodexAcpClient(codexAppServerClient);
-    const codexAcpAgent = new CodexAcpServer(acpConnection, codexAcpClient, undefined, config.getExitCode);
+    const codexAcpAgent = new CodexAcpServer(
+        acpConnection,
+        codexAcpClient,
+        undefined,
+        config.getExitCode,
+        undefined,
+    );
 
     const transportEvents: CodexConnectionEvent[] = [];
     const codexEventHandlers: ((event: CodexConnectionEvent) => void)[] = [];
@@ -244,7 +250,7 @@ export function removeDirectoryWithRetry(directory: string): void {
 export interface CodexMockTestFixture extends TestFixture {
     sendServerNotification(notification: ServerNotification | Record<string, unknown>): void,
     sendServerRequest<T>(method: string, params: unknown): Promise<T>,
-    setPermissionResponse(response: RequestPermissionResponse): void,
+    setPermissionResponse(response: RequestPermissionResponse | Promise<RequestPermissionResponse>): void,
     setElicitationResponse(response: CreateElicitationResponse | Promise<CreateElicitationResponse>): void,
 }
 
@@ -255,12 +261,14 @@ export interface CodexMockTestFixture extends TestFixture {
  * Provides `sendServerRequest()` to simulate server-initiated requests (e.g., approval requests).
  * Provides `setPermissionResponse()` to control ACP permission dialog responses.
  */
-export function createCodexMockTestFixture(): CodexMockTestFixture {
+export function createCodexMockTestFixture(
+    restartCodexClient?: () => Promise<CodexAcpClient>,
+): CodexMockTestFixture {
     let unhandledNotificationHandler: ((notification: any) => void) | null = null;
     const requestHandlers = new Map<string, (params: unknown) => Promise<unknown>>();
 
     // State for controlling permission responses
-    const permissionState: { response: RequestPermissionResponse } = {
+    const permissionState: { response: RequestPermissionResponse | Promise<RequestPermissionResponse> } = {
         response: { outcome: { outcome: 'cancelled' } }
     };
     const elicitationState: { response: CreateElicitationResponse | Promise<CreateElicitationResponse> } = {
@@ -311,6 +319,10 @@ export function createCodexMockTestFixture(): CodexMockTestFixture {
             eventHandlers: acpEventHandlers,
         }
     });
+    if (restartCodexClient) {
+        vi.spyOn(baseFixture.getCodexAcpAgent() as any, "restartCodexClient")
+            .mockImplementation(restartCodexClient);
+    }
 
     return {
         ...baseFixture,
@@ -326,7 +338,7 @@ export function createCodexMockTestFixture(): CodexMockTestFixture {
             }
             return await handler(params) as T;
         },
-        setPermissionResponse(response: RequestPermissionResponse): void {
+        setPermissionResponse(response: RequestPermissionResponse | Promise<RequestPermissionResponse>): void {
             permissionState.response = response;
         },
         setElicitationResponse(response: CreateElicitationResponse | Promise<CreateElicitationResponse>): void {
@@ -407,6 +419,7 @@ export function createTestModel(overrides?: Partial<Model>): Model {
         upgradeInfo: null,
         availabilityNux: null,
         modelSpecialty: null,
+        multiAgentVersion: null,
         displayName: id,
         description: `${id} model`,
         hidden: false,

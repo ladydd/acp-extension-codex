@@ -257,6 +257,7 @@ describe("CodexACPAgent - list sessions", () => {
                 upgradeInfo: null,
                 availabilityNux: null,
                 modelSpecialty: null,
+                multiAgentVersion: null,
                 displayName: "gpt-5",
                 description: "test model",
                 hidden: false,
