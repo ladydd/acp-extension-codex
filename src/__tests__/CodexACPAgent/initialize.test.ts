@@ -87,6 +87,12 @@ describe('CodexACPAgent - initialize', () => {
                     controlMethod: "_session/goal",
                     actions: ["set", "pause", "resume", "clear"],
                 },
+                jetbrains: {
+                    air: {
+                        version: 1,
+                        capabilities: ["sessionFailure", "agentFileChangeReport"],
+                    },
+                },
             },
         });
     });

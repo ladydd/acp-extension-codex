@@ -62,11 +62,15 @@ export class CodexCommands {
 
     async publish(
         sessionState: SessionState,
-        availableCommands?: AvailableCommand[]
+        availableCommands?: AvailableCommand[],
+        shouldPublish: () => boolean = () => true,
     ): Promise<void> {
         try {
+            if (!shouldPublish()) {
+                return;
+            }
             const commands = availableCommands ?? await this.getAvailableCommands(sessionState);
-            if (commands.length === 0) {
+            if (commands.length === 0 || !shouldPublish()) {
                 return;
             }
 
@@ -76,7 +80,9 @@ export class CodexCommands {
                 availableCommands: commands
             });
         } catch (err) {
-            logger.error(`Failed to publish available commands for session ${sessionState.sessionId}`, err);
+            if (shouldPublish()) {
+                logger.error(`Failed to publish available commands for session ${sessionState.sessionId}`, err);
+            }
         }
     }
 

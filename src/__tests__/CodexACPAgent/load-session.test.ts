@@ -27,6 +27,7 @@ describe("CodexACPAgent - loadSession", () => {
             upgradeInfo: null,
             availabilityNux: null,
             modelSpecialty: null,
+            multiAgentVersion: null,
             displayName: "GPT-5.2",
             description: "Test model",
             hidden: false,
@@ -165,6 +166,7 @@ describe("CodexACPAgent - loadSession", () => {
                             status: "completed",
                             revisedPrompt: "A tiny blue square",
                             result: "iVBORw0KGgo=",
+                            failure: null,
                             savedPath: "/test/project/generated-blue-square.png",
                         },
                         {
@@ -254,6 +256,7 @@ describe("CodexACPAgent - loadSession", () => {
             upgradeInfo: null,
             availabilityNux: null,
             modelSpecialty: null,
+            multiAgentVersion: null,
             displayName: "GPT-5.2",
             description: "Test model",
             hidden: false,
@@ -601,6 +604,7 @@ describe("CodexACPAgent - loadSession", () => {
             upgradeInfo: null,
             availabilityNux: null,
             modelSpecialty: null,
+            multiAgentVersion: null,
             displayName: "GPT-5.2",
             description: "Test model",
             hidden: false,
@@ -675,7 +679,13 @@ describe("CodexACPAgent - loadSession", () => {
 
         fixture.sendServerNotification({
             method: "mcpServer/startupStatus/updated",
-            params: { threadId: "session-1", name: "broken-mcp", status: "failed", error: "boom" }
+            params: {
+                threadId: "session-1",
+                name: "broken-mcp",
+                status: "failed",
+                error: "boom",
+                failureReason: null,
+            }
         });
 
         await loadPromise;

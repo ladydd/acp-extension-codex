@@ -407,6 +407,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                 upgradeInfo: null,
                 availabilityNux: null,
                 modelSpecialty: null,
+                multiAgentVersion: null,
                 displayName: "gpt-5",
                 description: "test model",
                 hidden: false,
@@ -550,10 +551,25 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                 params: {
                     threadId,
                     threadSettings: {
+                        cwd: "/workspace",
+                        approvalPolicy: "never",
+                        approvalsReviewer: "user",
+                        sandboxPolicy: {type: "dangerFullAccess"},
+                        activePermissionProfile: null,
+                        model: "gpt-5",
+                        modelProvider: "openai",
+                        serviceTier: null,
+                        effort: "medium",
+                        summary: null,
                         collaborationMode: {
                             mode: "plan",
-                            settings: {},
+                            settings: {
+                                model: "gpt-5",
+                                reasoning_effort: "medium",
+                                developer_instructions: null,
+                            },
                         },
+                        personality: null,
                     },
                 },
             });
@@ -780,19 +796,19 @@ describe('ACP server test', { timeout: 40_000 }, () => {
 
         mockFixture.sendServerNotification({
             method: "mcpServer/startupStatus/updated",
-            params: { threadId: "thread-id", name: "alpha", status: "starting", error: null }
+            params: { threadId: "thread-id", name: "alpha", status: "starting", error: null, failureReason: null }
         });
         mockFixture.sendServerNotification({
             method: "mcpServer/startupStatus/updated",
-            params: { threadId: "thread-id", name: "beta", status: "starting", error: null }
+            params: { threadId: "thread-id", name: "beta", status: "starting", error: null, failureReason: null }
         });
         mockFixture.sendServerNotification({
             method: "mcpServer/startupStatus/updated",
-            params: { threadId: "thread-id", name: "alpha", status: "ready", error: null }
+            params: { threadId: "thread-id", name: "alpha", status: "ready", error: null, failureReason: null }
         });
         mockFixture.sendServerNotification({
             method: "mcpServer/startupStatus/updated",
-            params: { threadId: "thread-id", name: "beta", status: "ready", error: null }
+            params: { threadId: "thread-id", name: "beta", status: "ready", error: null, failureReason: null }
         });
 
         const startup = await startupPromise;
@@ -843,7 +859,13 @@ describe('ACP server test', { timeout: 40_000 }, () => {
 
         mockFixture.sendServerNotification({
             method: "mcpServer/startupStatus/updated",
-            params: { threadId: "thread-id", name: "broken-mcp", status: "failed", error: "boom" }
+            params: {
+                threadId: "thread-id",
+                name: "broken-mcp",
+                status: "failed",
+                error: "boom",
+                failureReason: null,
+            }
         });
 
         await vi.waitFor(() => {
@@ -3332,6 +3354,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             data: [
                 {
                     name: "fs",
+                    pluginId: null,
                     serverInfo: null,
                     tools: {listFiles: {name: "listFiles", inputSchema: {type: "object"}}},
                     resources: [{name: "workspace", uri: "file:///workspace"}],
@@ -3340,6 +3363,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                 },
                 {
                     name: "browser",
+                    pluginId: null,
                     serverInfo: null,
                     tools: {},
                     resources: [],
@@ -3389,6 +3413,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             upgradeInfo: null,
             availabilityNux: null,
             modelSpecialty: null,
+            multiAgentVersion: null,
             displayName: 'Codex 5.2',
             description: 'Coding model',
             hidden: false,
@@ -3411,6 +3436,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             upgradeInfo: null,
             availabilityNux: null,
             modelSpecialty: null,
+            multiAgentVersion: null,
             displayName: 'Standard 5.1',
             description: 'Standard model',
             hidden: false,
@@ -3881,6 +3907,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                     secondary: null,
                     credits: null,
                     individualLimit: null,
+                    spendControlReached: null,
                     planType: null,
                     rateLimitReachedType: null,
                 }
@@ -3897,6 +3924,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                     secondary: null,
                     credits: null,
                     individualLimit: null,
+                    spendControlReached: null,
                     planType: null,
                     rateLimitReachedType: null,
                 }
@@ -3916,6 +3944,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                 secondary: null,
                 credits: null,
                 individualLimit: null,
+                spendControlReached: null,
                 planType: null,
                 rateLimitReachedType: null,
             }
@@ -3930,6 +3959,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                 secondary: null,
                 credits: null,
                 individualLimit: null,
+                spendControlReached: null,
                 planType: null,
                 rateLimitReachedType: null,
             }
@@ -3994,6 +4024,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                     secondary: null,
                     credits: null,
                     individualLimit: null,
+                    spendControlReached: null,
                     planType: "pro",
                     rateLimitReachedType: null,
                 }
@@ -4009,6 +4040,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                     secondary: { usedPercent: 11, resetsAt: 1784100000, windowDurationMins: 300 },
                     credits: null,
                     individualLimit: null,
+                    spendControlReached: null,
                     planType: null,
                     rateLimitReachedType: null,
                 }
@@ -4023,6 +4055,7 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             secondary: { usedPercent: 11, resetsAt: 1784100000, windowDurationMins: 300 },
             credits: null,
             individualLimit: null,
+            spendControlReached: null,
             planType: "pro",
             rateLimitReachedType: null,
         });

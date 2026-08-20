@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.4.0",
+  "version": "1.6.2",
   "description": "An ACP-compatible coding agent powered by Codex",
   "main": "dist/index.js",
   "bin": {
@@ -36,8 +36,8 @@
     "example:steering": "node --import tsx examples/steering.ts",
     "example:steering:multistep": "node --import tsx examples/steering.ts",
     "generate-types": "./node_modules/.bin/codex app-server generate-ts --out src/app-server",
-    "test": "vitest run",
-    "test:e2e": "npm run build && RUN_E2E_TESTS=true vitest run src/__tests__/CodexACPAgent/e2e",
+    "test": "vitest run --no-file-parallelism --retry=2",
+    "test:e2e": "npm run build && RUN_E2E_TESTS=true vitest run --no-file-parallelism --retry=2 src/__tests__/CodexACPAgent/e2e",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p examples/tsconfig.json",
     "codex-test": "tsx .claude/skills/run-codex/scripts/run-codex-test.ts"
@@ -71,7 +71,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",
-    "@openai/codex": "^0.147.0",
+    "@openai/codex": "^0.148.0",
     "diff": "^9.0.0",
     "open": "^11.0.0",
     "vscode-jsonrpc": "^9.0.1",
