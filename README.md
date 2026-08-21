@@ -12,7 +12,7 @@ Use [OpenAI Codex](https://github.com/openai/codex) from [Agent Client Protocol]
 - Model, reasoning effort, fast mode, approval, and sandbox mode configuration.
 - Text prompts, embedded context, images, resource links, and additional workspace directories.
 - Shell command, file change, permission request, MCP tool call, terminal output, reasoning, plan, web search, image generation, image view, token usage, and review events.
-- Subagent launches as standard ACP tool calls, with Codex thread identity and activity details in namespaced `_meta.codex.subagent` metadata.
+- Subagent launches as standard ACP tool calls with provider-neutral lifecycle data in `_meta.lody.task`; Codex thread details remain available in `_meta.codex`.
 - Session-scoped long-running goals through the provider-neutral [goal extension](docs/goal-extension.md).
 - Client-provided MCP servers over command-based stdio config and HTTP transport.
 - Native ACP session forking through Codex App Server `thread/fork`.
@@ -48,15 +48,18 @@ The adapter advertises ACP auth methods during initialization. Clients can authe
 - API key via `CODEX_API_KEY` or `OPENAI_API_KEY`.
 - A custom OpenAI-compatible gateway, when the client opts in to the gateway auth capability.
 
-## Steering extension
+## Lody extensions
 
-The initialize response advertises `_meta.codex.steer` with the applied notification
-method and active-turn configuration policy. To steer a running prompt, call the
-advertised `_session/steering` method with `{ sessionId, prompt }`. Clients that need a
-committed-application boundary can also include a unique `steerId`. The adapter calls
-Codex `turn/steer` and emits `_codex/steerApplied { sessionId, steerId }` only after
-Codex commits that correlated user-message item. The steer keeps the active turn's
-model, mode, and configuration; slash commands cannot be steered.
+The initialize response advertises versioned capabilities under
+`agentCapabilities._meta.lody`. Methods and payloads come from
+`acp-extension-core`; this includes usage and rate-limit reporting, an independent
+rate-limit query, acknowledged steering, goals, subagent/background-task lifecycle,
+compaction lifecycle, and history reads. ACP-standard plans, elicitation, session
+forking, and context-window usage stay on their standard protocol paths.
+
+Codex steering uses `_lody/session/steer` and confirms application with
+`_lody/session/steer_applied`. It keeps the active turn's model, mode, and
+configuration; slash commands cannot be steered.
 
 ## Runtime options
 

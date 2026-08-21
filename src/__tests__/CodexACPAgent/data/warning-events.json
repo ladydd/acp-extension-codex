@@ -6,8 +6,9 @@
       "update": {
         "sessionUpdate": "session_info_update",
         "_meta": {
-          "codex": {
-            "warning": {
+          "lody": {
+            "notice": {
+              "level": "warning",
               "message": "Falling back from WebSockets to HTTPS transport. unexpected status 401",
               "source": "warning"
             }
@@ -25,8 +26,9 @@
       "update": {
         "sessionUpdate": "session_info_update",
         "_meta": {
-          "codex": {
-            "warning": {
+          "lody": {
+            "notice": {
+              "level": "warning",
               "message": "Project configuration could not be loaded\n\nUsing the default configuration instead.",
               "source": "configWarning"
             }

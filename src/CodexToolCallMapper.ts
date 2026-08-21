@@ -33,6 +33,9 @@ import {
     type TerminalOutputMode,
 } from "./TerminalOutputMode";
 import {createContextCompactionMeta} from "./ContextCompactionMeta";
+import {LODY_TOOL_NAMES} from "acp-extension-core";
+
+const imageGenerationMeta = {lody: {toolName: LODY_TOOL_NAMES.imageGeneration}} as const;
 
 type CodexItemStatus = CommandExecutionStatus | PatchApplyStatus | McpToolCallStatus | DynamicToolCallStatus | CollabAgentToolCallStatus;
 type AcpToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
@@ -190,6 +193,7 @@ export function createImageGenerationStartUpdate(
         kind: "other",
         title: "Image generation",
         status: "in_progress",
+        _meta: imageGenerationMeta,
         rawInput: {
             id: item.id,
         },
@@ -203,6 +207,7 @@ export function createImageGenerationCompleteUpdate(
         sessionUpdate: "tool_call_update",
         toolCallId: item.id,
         status: imageGenerationTerminalStatus(item.status),
+        _meta: imageGenerationMeta,
         content: imageGenerationContent(item),
         rawOutput: imageGenerationRawOutput(item),
     };
@@ -217,6 +222,7 @@ export function createImageGenerationUpdate(
         toolCallId: item.id,
         kind: "other",
         title: "Image generation",
+        _meta: imageGenerationMeta,
         status: options?.terminalStatus
             ? imageGenerationTerminalStatus(item.status)
             : imageGenerationToolStatus(item.status),
@@ -456,6 +462,17 @@ function createCollabAgentToolCallRawInput(item: CollabAgentToolCallItem) {
 
 function createCollabAgentToolCallMeta(item: CollabAgentToolCallItem) {
     return {
+        lody: {
+            task: {
+                version: 1,
+                taskId: item.id,
+                kind: "subagent",
+                status: toAcpStatus(item.status),
+                description: item.prompt,
+                actor: item.tool,
+                ...(typeof item.model === "string" ? {modelId: item.model} : {}),
+            },
+        },
         codex: {
             collaboration: {
                 tool: item.tool,
@@ -482,6 +499,16 @@ export function createSubAgentActivityUpdate(
             activityKind: item.kind,
         },
         _meta: {
+            lody: {
+                task: {
+                    version: 1,
+                    taskId: item.id,
+                    kind: "subagent",
+                    status,
+                    description: title,
+                    actor: name,
+                },
+            },
             codex: {
                 subagent: {
                     threadId: item.agentThreadId,

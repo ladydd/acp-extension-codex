@@ -7,7 +7,7 @@ export function createCodexMessagePhaseMeta(phase: string | null | undefined): A
     if (!phase) {
         return undefined;
     }
-    return { codex: { phase } };
+    return { lody: { messagePhase: phase } };
 }
 
 export function createCodexAgentMessageMeta(
@@ -15,8 +15,7 @@ export function createCodexAgentMessageMeta(
     turnId: string,
 ): AcpMeta {
     return {
-        ...(phase ? {codex: {phase}} : {}),
-        lody: {turnId},
+        lody: {turnId, ...(phase ? {messagePhase: phase} : {})},
     };
 }
 

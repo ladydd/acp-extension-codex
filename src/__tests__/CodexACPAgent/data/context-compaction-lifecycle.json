@@ -10,8 +10,11 @@
         "title": "Compact conversation",
         "status": "in_progress",
         "_meta": {
-          "contextCompaction": {
-            "version": 1
+          "lody": {
+            "activity": {
+              "version": 1,
+              "kind": "context_compaction"
+            }
           }
         }
       }
@@ -29,8 +32,11 @@
         "title": "Compact conversation",
         "status": "completed",
         "_meta": {
-          "contextCompaction": {
-            "version": 1
+          "lody": {
+            "activity": {
+              "version": 1,
+              "kind": "context_compaction"
+            }
           }
         }
       }

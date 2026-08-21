@@ -45,17 +45,17 @@
   that provider-specific cleanup in `src/ReasoningText.ts` across live deltas and history replay;
   do not filter assistant text, raw reasoning, or HTML globally in the client renderer.
 - App-server `warning` and `configWarning` notifications are structured ACP session info updates:
-  put `{ message, source }` under `_meta.codex.warning`. Never emit them as agent message text;
+  put `{ level, message, source }` under `_meta.lody.notice`. Never emit them as agent message text;
   Lody persists that metadata as an `agent_warning` system notice, and text chunks would pollute
   assistant history, generated titles, and replayed prompts.
 - App-server terminal `error` notifications are also control-plane state, never agent message text.
   Record a prompt failure for every non-retry error and publish structured `_meta.codex.error`
   metadata only. Redact any Lody internal-instruction tail at this adapter boundary before putting
   provider errors in ACP metadata or `RequestError` data. Session title updates must identify
-  `_meta.codex.titleSource` as `explicit`,
+  `_meta.lody.titleSource` as `explicit`,
   `fallback`, or `unset` so hosts can accept real names without mistaking prompt previews for
   generated titles.
 - Account rate-limit windows are dynamic. Read the full `account/rateLimits/read` snapshot when a
   session opens, merge sparse `account/rateLimits/updated` values into that snapshot, and preserve
-  each window's `windowDurationMins` in the ACP extension. Never infer 5-hour/7-day meaning from
-  `primary`/`secondary` position; only populate legacy fixed fields when the duration matches.
+  each native window's `windowDurationMins` when mapping it to Core's
+  `windowDurationSeconds`. Never infer 5-hour/7-day meaning from `primary`/`secondary` position.

@@ -3,6 +3,7 @@ import {z} from "zod";
 import type {CodexAcpServer} from "./CodexAcpServer";
 import {
     LEGACY_SET_SESSION_MODEL_METHOD,
+    LODY_RATE_LIMITS_GET_METHOD,
     LODY_READ_SESSION_HISTORY_METHOD,
     SESSION_STEERING_METHOD,
 } from "./AcpExtensions";
@@ -21,11 +22,17 @@ const legacySetSessionModelParamsParser = z.object({
 const sessionSteerParamsParser = z.object({
     sessionId: z.string(),
     prompt: z.array(z.any()),
-    steerId: z.string().min(1).optional(),
+    steerId: z.string().min(1),
 }).passthrough();
 
 const lodyReadSessionHistoryParamsParser = z.object({
     sessionId: z.string().min(1),
+}).passthrough();
+
+const lodyRateLimitsGetParamsParser = z.object({
+    sessionId: z.string().optional(),
+    accountId: z.string().optional(),
+    modelId: z.string().optional(),
 }).passthrough();
 
 export interface CodexAcpAppOptions {
@@ -72,6 +79,7 @@ export function createCodexAcpApp(options: CodexAcpAppOptions): acp.AgentApp {
         .onRequest("authentication/status", emptyExtensionParamsParser, (ctx) => getAgent().extMethod("authentication/status", ctx.params))
         .onRequest("authentication/logout", emptyExtensionParamsParser, (ctx) => getAgent().extMethod("authentication/logout", ctx.params))
         .onRequest(LEGACY_SET_SESSION_MODEL_METHOD, legacySetSessionModelParamsParser, (ctx) => getAgent().extMethod(LEGACY_SET_SESSION_MODEL_METHOD, ctx.params))
+        .onRequest(LODY_RATE_LIMITS_GET_METHOD, lodyRateLimitsGetParamsParser, () => getAgent().readRateLimits())
         .onRequest(LODY_READ_SESSION_HISTORY_METHOD, lodyReadSessionHistoryParamsParser, (ctx) => getAgent().readSessionHistory(ctx.params))
         .onRequest(SESSION_STEERING_METHOD, sessionSteerParamsParser, (ctx) => getAgent().extMethod(SESSION_STEERING_METHOD, ctx.params));
 

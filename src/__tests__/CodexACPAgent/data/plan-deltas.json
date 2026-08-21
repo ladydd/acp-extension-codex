@@ -1,32 +1,4 @@
 {
-  "method": "notify",
-  "args": [
-    "_acp_ext:codex_proposed_plan",
-    {
-      "schemaVersion": 1,
-      "sessionId": "test-session-id",
-      "turnId": "turn-1",
-      "markdown": "### Implementation plan\n\n",
-      "status": "delta",
-      "isLatest": true
-    }
-  ]
-}
-{
-  "method": "notify",
-  "args": [
-    "_acp_ext:codex_proposed_plan",
-    {
-      "schemaVersion": 1,
-      "sessionId": "test-session-id",
-      "turnId": "turn-1",
-      "markdown": "### Implementation plan\n\n1. Add the event mapping.\n2. Verify it.",
-      "status": "delta",
-      "isLatest": true
-    }
-  ]
-}
-{
   "method": "sessionUpdate",
   "args": [
     {
@@ -39,8 +11,8 @@
           "text": "Completed text should not duplicate the streamed plan."
         },
         "_meta": {
-          "codex": {
-            "phase": "final_answer"
+          "lody": {
+            "messagePhase": "final_answer"
           }
         }
       }

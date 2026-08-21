@@ -1,7 +1,7 @@
 import * as acp from "@agentclientprotocol/sdk";
 import {z} from "zod";
 import type {CodexAcpServer} from "./CodexAcpServer";
-import {GOAL_CONTROL_METHOD, LEGACY_GOAL_CONTROL_METHOD} from "./AcpExtensions";
+import {GOAL_CONTROL_METHOD} from "./AcpExtensions";
 
 const goalControlParamsParser = z.discriminatedUnion("action", [
     z.object({
@@ -22,6 +22,5 @@ export function registerGoalControlRequests(
     getAgent: () => GoalControlAgent,
 ): acp.AgentApp {
     return app
-        .onRequest(GOAL_CONTROL_METHOD, goalControlParamsParser, (ctx) => getAgent().extMethod(GOAL_CONTROL_METHOD, ctx.params))
-        .onRequest(LEGACY_GOAL_CONTROL_METHOD, goalControlParamsParser, (ctx) => getAgent().extMethod(LEGACY_GOAL_CONTROL_METHOD, ctx.params));
+        .onRequest(GOAL_CONTROL_METHOD, goalControlParamsParser, (ctx) => getAgent().extMethod(GOAL_CONTROL_METHOD, ctx.params));
 }

@@ -11,8 +11,8 @@
           "text": "### Fallback plan\n\n1. Use the completed item."
         },
         "_meta": {
-          "codex": {
-            "phase": "final_answer"
+          "lody": {
+            "messagePhase": "final_answer"
           }
         }
       }

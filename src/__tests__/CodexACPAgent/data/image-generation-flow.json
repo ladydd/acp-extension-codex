@@ -9,6 +9,11 @@
         "kind": "other",
         "title": "Image generation",
         "status": "in_progress",
+        "_meta": {
+          "lody": {
+            "toolName": "ImageGeneration"
+          }
+        },
         "rawInput": {
           "id": "image-generation-1"
         }
@@ -25,6 +30,11 @@
         "sessionUpdate": "tool_call_update",
         "toolCallId": "image-generation-1",
         "status": "completed",
+        "_meta": {
+          "lody": {
+            "toolName": "ImageGeneration"
+          }
+        },
         "content": [
           {
             "type": "content",

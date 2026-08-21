@@ -7,7 +7,7 @@
         "sessionUpdate": "session_info_update",
         "title": "Renamed session",
         "_meta": {
-          "codex": {
+          "lody": {
             "titleSource": "explicit"
           }
         }
@@ -24,7 +24,7 @@
         "sessionUpdate": "session_info_update",
         "title": null,
         "_meta": {
-          "codex": {
+          "lody": {
             "titleSource": "unset"
           }
         }

@@ -8,8 +8,17 @@ import type {
     SessionId,
 } from "@agentclientprotocol/sdk";
 import {
+    LODY_EXTENSION_METHODS,
+    type LodyExtensionCapabilities,
+    type LodySteerRequest,
+    type LodySteerResponse,
+    type RateLimitsGetRequest,
+    type RateLimitsGetResponse,
+    type RateLimitsUpdate,
+    type SessionUsageUpdate,
+} from "acp-extension-core";
+import {
     GOAL_CONTROL_METHOD,
-    LEGACY_GOAL_CONTROL_METHOD,
     type GoalControlRequest,
 } from "./GoalExtension";
 
@@ -17,7 +26,6 @@ export {
     GOAL_CONTROL_ACTIONS,
     GOAL_CONTROL_METHOD,
     GOAL_EXTENSION_VERSION,
-    LEGACY_GOAL_CONTROL_METHOD,
     type GoalCapability,
     type GoalControlAction,
     type GoalControlRequest,
@@ -26,12 +34,29 @@ export {
 } from "./GoalExtension";
 
 export const LEGACY_SET_SESSION_MODEL_METHOD = "session/set_model";
-export const ACP_EXT_SESSION_USAGE_UPDATE_METHOD = "_acp_ext:session_usage_update";
-export const ACP_EXT_SESSION_RATE_LIMITS_METHOD = "_acp_ext:session_rate_limits";
-export const ACP_EXT_CODEX_PROPOSED_PLAN_METHOD = "_acp_ext:codex_proposed_plan";
-export const CODEX_STEER_APPLIED_METHOD = "_codex/steerApplied";
-export const SESSION_STEERING_METHOD = "_session/steering";
-export const LODY_READ_SESSION_HISTORY_METHOD = "_lody/session/history/read";
+export const ACP_EXT_SESSION_USAGE_UPDATE_METHOD = LODY_EXTENSION_METHODS.sessionUsageUpdate;
+export const ACP_EXT_SESSION_RATE_LIMITS_METHOD = LODY_EXTENSION_METHODS.rateLimitsUpdate;
+export const CODEX_STEER_APPLIED_METHOD = LODY_EXTENSION_METHODS.sessionSteerApplied;
+export const SESSION_STEERING_METHOD = LODY_EXTENSION_METHODS.sessionSteer;
+export const LODY_READ_SESSION_HISTORY_METHOD = LODY_EXTENSION_METHODS.sessionHistoryRead;
+export const LODY_RATE_LIMITS_GET_METHOD = LODY_EXTENSION_METHODS.rateLimitsGet;
+
+export const CODEX_LODY_CAPABILITIES = {
+    usage: {version: 1},
+    rateLimits: {version: 1, query: true},
+    forkAtTurn: {version: 1},
+    steering: {
+        version: 1,
+        transport: "request",
+        upstreamTurn: "same",
+        configPolicy: "active",
+    },
+    tasks: {version: 1, background: true},
+    subagents: {version: 1, lifecycle: true},
+    goal: {version: 1, actions: ["set", "pause", "resume", "clear"]},
+    compaction: {version: 1},
+    sessionHistory: {version: 1},
+} as const satisfies LodyExtensionCapabilities;
 export function getLodyForkTurnId(meta: unknown): string | null {
     if (typeof meta !== "object" || meta === null) return null;
     const lody = (meta as Record<string, unknown>)["lody"];
@@ -44,32 +69,6 @@ export function getLodyForkTurnId(meta: unknown): string | null {
         ? turnId
         : null;
 }
-
-export type CodexSteerCapability = {
-    version: 1;
-    method: typeof SESSION_STEERING_METHOD;
-    appliedNotification: typeof CODEX_STEER_APPLIED_METHOD;
-    upstreamTurn: "same";
-    configPolicy: "active";
-}
-
-export const CODEX_STEER_CAPABILITY: CodexSteerCapability = {
-    version: 1,
-    method: SESSION_STEERING_METHOD,
-    appliedNotification: CODEX_STEER_APPLIED_METHOD,
-    upstreamTurn: "same",
-    configPolicy: "active",
-};
-
-export type LodyReadSessionHistoryCapability = {
-    version: 1;
-    method: typeof LODY_READ_SESSION_HISTORY_METHOD;
-}
-
-export const LODY_READ_SESSION_HISTORY_CAPABILITY: LodyReadSessionHistoryCapability = {
-    version: 1,
-    method: LODY_READ_SESSION_HISTORY_METHOD,
-};
 
 export type LodyReadSessionHistoryRequest = {
     sessionId: SessionId;
@@ -88,42 +87,10 @@ export type LegacySessionModelState = {
     currentModelId: string;
 }
 
-export type SessionUsageExtNotification = {
-    usage: {
-        inputTokens: number;
-        outputTokens: number;
-        cacheReadInputTokens: number;
-        reasoningOutputTokens: number;
-        contextWindow: number | null;
-    }
-}
-
-export type SessionRateLimitWindow = {
-    usedPercent: number;
-    windowDurationMins: number | null;
-    resetsAt: number | null;
-}
-
-export type SessionRateLimitsExtNotification = {
-    schemaVersion: 2;
-    planName: string | null;
-    limitName: string | null;
-    limitId: string | null;
-    windows: Array<SessionRateLimitWindow>;
-    fiveHour: number | null;
-    sevenDay: number | null;
-    fiveHourResetAt: number | null;
-    sevenDayResetAt: number | null;
-}
-
-export type CodexProposedPlanExtNotification = {
-    schemaVersion: 1;
-    sessionId: string;
-    turnId: string;
-    markdown: string;
-    status: "delta" | "completed";
-    isLatest: boolean;
-}
+export type SessionUsageExtNotification = SessionUsageUpdate;
+export type SessionRateLimitsExtNotification = RateLimitsUpdate;
+export type LodyRateLimitsGetRequest = RateLimitsGetRequest;
+export type LodyRateLimitsGetResponse = RateLimitsGetResponse;
 
 export type LegacySetSessionModelRequest = {
     sessionId: SessionId;
@@ -159,7 +126,6 @@ export function isExtMethodRequest(request: { method: string, params: Record<str
         || request.method === "authentication/logout"
         || request.method === LEGACY_SET_SESSION_MODEL_METHOD
         || request.method === GOAL_CONTROL_METHOD
-        || request.method === LEGACY_GOAL_CONTROL_METHOD
         || request.method === SESSION_STEERING_METHOD;
 }
 
@@ -175,7 +141,7 @@ export type LegacySetSessionModelExtRequest = {
 }
 
 export type GoalControlExtRequest = {
-    method: typeof GOAL_CONTROL_METHOD | typeof LEGACY_GOAL_CONTROL_METHOD;
+    method: typeof GOAL_CONTROL_METHOD;
     params: GoalControlRequest;
 }
 
@@ -186,20 +152,8 @@ export async function legacySetSessionModel(
     return await connection.request<LegacySetSessionModelResponse, LegacySetSessionModelRequest>(LEGACY_SET_SESSION_MODEL_METHOD, params);
 }
 
-export type SessionSteerRequest = {
-    sessionId: SessionId;
-    prompt: ContentBlock[];
-    /**
-     * Lody application correlation. When present, the adapter only injects
-     * into the active turn and confirms application through the advertised
-     * committed-user-message notification; it never starts a fallback turn.
-     */
-    steerId?: string;
-}
-
-export type SessionSteeringResponse = {
-    outcome: "injected" | "startedNewTurn" | "failed";
-}
+export type SessionSteerRequest = LodySteerRequest<ContentBlock>;
+export type SessionSteeringResponse = LodySteerResponse;
 
 export type SessionSteeringExtRequest = {
     method: typeof SESSION_STEERING_METHOD;

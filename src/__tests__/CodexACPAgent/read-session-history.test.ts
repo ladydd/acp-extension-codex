@@ -32,7 +32,7 @@ describe("CodexACPAgent - readSessionHistory", () => {
                         sessionUpdate: "session_info_update",
                         title: "Imported conversation",
                         _meta: {
-                            codex: {
+                            lody: {
                                 titleSource: "explicit",
                             },
                         },

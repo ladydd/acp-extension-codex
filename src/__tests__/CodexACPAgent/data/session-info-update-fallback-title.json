@@ -7,7 +7,7 @@
         "sessionUpdate": "session_info_update",
         "title": "Fix the flaky test in CI",
         "_meta": {
-          "codex": {
+          "lody": {
             "titleSource": "fallback"
           }
         }

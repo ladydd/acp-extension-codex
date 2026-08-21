@@ -6,7 +6,9 @@
       "update": {
         "sessionUpdate": "session_info_update",
         "_meta": {
-          "goal": null
+          "lody": {
+            "goal": null
+          }
         }
       }
     }
@@ -21,7 +23,7 @@
         "sessionUpdate": "session_info_update",
         "title": "List the files",
         "_meta": {
-          "codex": {
+          "lody": {
             "titleSource": "fallback"
           }
         }
@@ -74,8 +76,8 @@
           "text": "Inspect project files"
         },
         "_meta": {
-          "codex": {
-            "phase": "final_answer"
+          "lody": {
+            "messagePhase": "final_answer"
           }
         }
       }
