@@ -6,15 +6,16 @@
       "update": {
         "sessionUpdate": "session_info_update",
         "_meta": {
-          "goal": {
-            "objective": "Keep the restored migration green",
-            "status": "paused",
-            "tokenBudget": null,
-            "tokensUsed": 42,
-            "timeUsedSeconds": 46,
-            "createdAt": 1710000000000,
-            "updatedAt": 1710000046000,
-            "controlMethod": "_session/goal"
+          "lody": {
+            "goal": {
+              "objective": "Keep the restored migration green",
+              "status": "paused",
+              "tokenBudget": null,
+              "tokensUsed": 42,
+              "timeUsedSeconds": 46,
+              "createdAtEpochSeconds": 1710000000,
+              "updatedAtEpochSeconds": 1710000046
+            }
           }
         }
       }
@@ -30,7 +31,7 @@
         "sessionUpdate": "session_info_update",
         "title": "Saved title",
         "_meta": {
-          "codex": {
+          "lody": {
             "titleSource": "explicit"
           }
         }
@@ -278,6 +279,11 @@
         "toolCallId": "item-image-generation-1",
         "kind": "other",
         "title": "Image generation",
+        "_meta": {
+          "lody": {
+            "toolName": "ImageGeneration"
+          }
+        },
         "status": "completed",
         "content": [
           {
@@ -319,8 +325,11 @@
         "title": "Compact conversation",
         "status": "completed",
         "_meta": {
-          "contextCompaction": {
-            "version": 1
+          "lody": {
+            "activity": {
+              "version": 1,
+              "kind": "context_compaction"
+            }
           }
         }
       }
@@ -344,6 +353,16 @@
           "activityKind": "started"
         },
         "_meta": {
+          "lody": {
+            "task": {
+              "version": 1,
+              "taskId": "item-subagent-1",
+              "kind": "subagent",
+              "status": "completed",
+              "description": "Start subagent test_audit",
+              "actor": "test_audit"
+            }
+          },
           "codex": {
             "subagent": {
               "threadId": "thread-child-1",

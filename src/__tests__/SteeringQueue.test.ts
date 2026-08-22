@@ -3,7 +3,7 @@ import type {SessionSteerRequest, SessionSteeringResponse} from "../AcpExtension
 import {SteeringQueue} from "../SteeringQueue";
 
 function request(text: string): SessionSteerRequest {
-    return {sessionId: "session-id", prompt: [{type: "text", text}]};
+    return {sessionId: "session-id", prompt: [{type: "text", text}], steerId: `steer-${text}`};
 }
 
 function deferred<T>(): {promise: Promise<T>, resolve: (value: T) => void, reject: (error: unknown) => void} {
@@ -58,7 +58,7 @@ describe("SteeringQueue", () => {
     });
 
     it("delivers each handler result to its own caller", async () => {
-        const outcomes: SessionSteeringResponse["outcome"][] = ["injected", "startedNewTurn", "injected"];
+        const outcomes: SessionSteeringResponse["outcome"][] = ["injected", "failed", "injected"];
         let call = 0;
         const queue = new SteeringQueue(async () => ({outcome: outcomes[call++]!}));
 
@@ -70,7 +70,7 @@ describe("SteeringQueue", () => {
 
         expect(results).toEqual([
             {outcome: "injected"},
-            {outcome: "startedNewTurn"},
+            {outcome: "failed"},
             {outcome: "injected"},
         ]);
     });

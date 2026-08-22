@@ -249,6 +249,7 @@ describe('Token Usage Events', () => {
                 args: [
                     ACP_EXT_SESSION_USAGE_UPDATE_METHOD,
                     {
+                        sessionId,
                         usage: {
                             inputTokens: 4000,
                             outputTokens: 900,
@@ -299,12 +300,12 @@ describe('Token Usage Events', () => {
                 args: [
                     ACP_EXT_SESSION_USAGE_UPDATE_METHOD,
                     {
+                        sessionId,
                         usage: {
                             inputTokens: 4000,
                             outputTokens: 900,
                             cacheReadInputTokens: 1000,
                             reasoningOutputTokens: 100,
-                            contextWindow: null,
                         },
                     },
                 ],

@@ -1,13 +1,12 @@
 import * as acp from "@agentclientprotocol/sdk";
 import {describe, expect, it} from "vitest";
-import {GOAL_CONTROL_METHOD, LEGACY_GOAL_CONTROL_METHOD} from "../AcpExtensions";
+import {GOAL_CONTROL_METHOD} from "../AcpExtensions";
 import type {CodexAcpServer} from "../CodexAcpServer";
 import {createCodexAcpApp} from "../CodexAcpApp";
 
 describe("goal control transport", () => {
-    it.each([GOAL_CONTROL_METHOD, LEGACY_GOAL_CONTROL_METHOD])(
-        "routes %s over an ACP connection",
-        async (method) => {
+    it("routes the Lody goal method over an ACP connection", async () => {
+            const method = GOAL_CONTROL_METHOD;
             let connectionInstalled = false;
             const app = createCodexAcpApp({
                 name: "goal-control-test",
@@ -38,6 +37,5 @@ describe("goal control transport", () => {
                     objective: "Ship the sync",
                 },
             });
-        },
-    );
+        });
 });

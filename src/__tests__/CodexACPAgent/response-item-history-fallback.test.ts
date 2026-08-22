@@ -71,7 +71,7 @@ describe("ResponseItemHistoryFallback", () => {
         ]), "terminal_output");
 
         expect(agentMessageMetas(updates)).toEqual([
-            { codex: { phase: "final_answer" } },
+            { lody: { messagePhase: "final_answer" } },
         ]);
     });
 

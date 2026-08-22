@@ -1,4 +1,4 @@
-import {GOAL_CONTROL_METHOD, type GoalSnapshot, type GoalStatus} from "./GoalExtension";
+import {type GoalSnapshot, type GoalStatus} from "./GoalExtension";
 import type {ThreadGoal} from "./app-server/v2";
 
 export type ThreadGoalSnapshot = GoalSnapshot;
@@ -16,10 +16,6 @@ function toGoalStatus(status: ThreadGoal["status"]): GoalStatus {
     }
 }
 
-function toUnixMilliseconds(timestampSeconds: number): number {
-    return timestampSeconds * 1000;
-}
-
 export function toThreadGoalSnapshot(goal: ThreadGoal): ThreadGoalSnapshot {
     return {
         objective: goal.objective.trim(),
@@ -27,9 +23,8 @@ export function toThreadGoalSnapshot(goal: ThreadGoal): ThreadGoalSnapshot {
         tokenBudget: goal.tokenBudget,
         tokensUsed: goal.tokensUsed,
         timeUsedSeconds: goal.timeUsedSeconds,
-        createdAt: toUnixMilliseconds(goal.createdAt),
-        updatedAt: toUnixMilliseconds(goal.updatedAt),
-        controlMethod: GOAL_CONTROL_METHOD,
+        createdAtEpochSeconds: goal.createdAt,
+        updatedAtEpochSeconds: goal.updatedAt,
     };
 }
 
@@ -42,5 +37,5 @@ export function sameThreadGoalSnapshot(
     return left.objective === right.objective
         && left.status === right.status
         && left.tokenBudget === right.tokenBudget
-        && left.createdAt === right.createdAt;
+        && left.createdAtEpochSeconds === right.createdAtEpochSeconds;
 }

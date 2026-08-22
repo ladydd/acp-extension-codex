@@ -15,6 +15,16 @@
           "activityKind": "started"
         },
         "_meta": {
+          "lody": {
+            "task": {
+              "version": 1,
+              "taskId": "call-spawn-weather",
+              "kind": "subagent",
+              "status": "completed",
+              "description": "Start subagent weather_research",
+              "actor": "weather_research"
+            }
+          },
           "codex": {
             "subagent": {
               "threadId": "thread-paris",

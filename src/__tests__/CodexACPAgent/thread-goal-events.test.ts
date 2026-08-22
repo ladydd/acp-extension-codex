@@ -126,15 +126,16 @@ describe("CodexEventHandler - thread goal events", () => {
         expect(events[0]!.args[0].update).toEqual({
             sessionUpdate: "session_info_update",
             _meta: {
-                goal: {
-                    objective: "Ship the goal update",
-                    status: "active",
-                    tokenBudget: null,
-                    tokensUsed: 42,
-                    timeUsedSeconds: 12,
-                    createdAt: 1710000000000,
-                    updatedAt: 1710000012000,
-                    controlMethod: "_session/goal",
+                lody: {
+                    goal: {
+                        objective: "Ship the goal update",
+                        status: "active",
+                        tokenBudget: null,
+                        tokensUsed: 42,
+                        timeUsedSeconds: 12,
+                        createdAtEpochSeconds: 1710000000,
+                        updatedAtEpochSeconds: 1710000012,
+                    },
                 },
             },
         });
@@ -174,9 +175,9 @@ describe("CodexEventHandler - thread goal events", () => {
 
         const events = mockFixture.getAcpConnectionEvents([]);
         expect(events).toHaveLength(2);
-        expect(events.map(event => event.args[0].update._meta?.goal?.createdAt)).toEqual([
-            1710000000000,
-            1710000100000,
+        expect(events.map(event => event.args[0].update._meta?.lody?.goal?.createdAtEpochSeconds)).toEqual([
+            1710000000,
+            1710000100,
         ]);
     });
 
@@ -230,15 +231,16 @@ describe("CodexEventHandler - thread goal events", () => {
         expect(events[1]!.args[0].update).toEqual({
             sessionUpdate: "session_info_update",
             _meta: {
-                goal: {
-                    objective: "tell me a joke",
-                    status: "complete",
-                    tokenBudget: null,
-                    tokensUsed: 42,
-                    timeUsedSeconds: 12,
-                    createdAt: 1710000000000,
-                    updatedAt: 1710000012000,
-                    controlMethod: "_session/goal",
+                lody: {
+                    goal: {
+                        objective: "tell me a joke",
+                        status: "complete",
+                        tokenBudget: null,
+                        tokensUsed: 42,
+                        timeUsedSeconds: 12,
+                        createdAtEpochSeconds: 1710000000,
+                        updatedAtEpochSeconds: 1710000012,
+                    },
                 },
             },
         });
@@ -262,7 +264,7 @@ describe("CodexEventHandler - thread goal events", () => {
         expect(events[0]!.args[0].update).toEqual({
             sessionUpdate: "session_info_update",
             _meta: {
-                goal: null,
+                lody: {goal: null},
             },
         });
     });

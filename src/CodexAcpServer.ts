@@ -54,16 +54,13 @@ import type {QuotaMeta} from "./QuotaMeta";
 import {logger} from "./Logger";
 import {sanitizeMcpServerName} from "./McpServerName";
 import {createResponseItemHistoryFallbackUpdates} from "./ResponseItemHistoryFallback";
+import {toLodyRateLimitsResponse} from "./LodyRateLimits";
 import {
     CODEX_STEER_APPLIED_METHOD,
-    CODEX_STEER_CAPABILITY,
-    GOAL_CONTROL_ACTIONS,
+    CODEX_LODY_CAPABILITIES,
     GOAL_CONTROL_METHOD,
-    GOAL_EXTENSION_VERSION,
     isExtMethodRequest,
-    LEGACY_GOAL_CONTROL_METHOD,
     LEGACY_SET_SESSION_MODEL_METHOD,
-    LODY_READ_SESSION_HISTORY_CAPABILITY,
     type LegacyLoadSessionResponse,
     type LegacyNewSessionResponse,
     type LegacyResumeSessionResponse,
@@ -381,26 +378,10 @@ export class CodexAcpServer {
                     http: true,
                     sse: false
                 },
-                _meta: {
-                    codex: {
-                        steer: CODEX_STEER_CAPABILITY,
-                    },
-                    lody: {
-                        forkAtTurn: {version: 1},
-                        readSessionHistory: LODY_READ_SESSION_HISTORY_CAPABILITY,
-                    },
-                },
+                _meta: {lody: CODEX_LODY_CAPABILITIES},
             },
             authMethods: getCodexAuthMethods(_params.clientCapabilities),
             _meta: {
-                steering: {
-                    supported: true,
-                },
-                goal: {
-                    version: GOAL_EXTENSION_VERSION,
-                    controlMethod: GOAL_CONTROL_METHOD,
-                    actions: [...GOAL_CONTROL_ACTIONS],
-                },
                 [JETBRAINS_META_KEY]: {
                     [AIR_META_KEY]: {
                         [AIR_EXTENSION_VERSION_KEY]: AIR_EXTENSION_VERSION,
@@ -430,8 +411,7 @@ export class CodexAcpServer {
                 return await this.unstable_setSessionModel(this.parseLegacySetSessionModelParams(methodRequest.params));
             case SESSION_STEERING_METHOD:
                 return await this.executeOrQueueSteeringRequest(this.parseSessionSteerParams(methodRequest.params));
-            case GOAL_CONTROL_METHOD:
-            case LEGACY_GOAL_CONTROL_METHOD: {
+            case GOAL_CONTROL_METHOD: {
                 const sessionState = this.sessions.get(methodRequest.params.sessionId);
                 if (!sessionState) {
                     throw RequestError.invalidParams(undefined, `Unknown session: ${methodRequest.params.sessionId}`);
@@ -508,6 +488,12 @@ export class CodexAcpServer {
                 throw RequestError.authRequired();
             }
         }
+    }
+
+    async readRateLimits() {
+        return toLodyRateLimitsResponse(
+            await this.runWithProcessCheck(() => this.codexAcpClient.getRateLimits()),
+        );
     }
 
     async getOrCreateSession(request: acp.NewSessionRequest | acp.ResumeSessionRequest): Promise<SessionOpenResult> {
@@ -1373,16 +1359,14 @@ export class CodexAcpServer {
      *
      * Every session gets its own {@link SteeringQueue}: the request is enqueued
      * and awaited, so concurrent steers for one session run strictly one at a
-     * time, in arrival order, and can never race to inject into — or start —
-     * rival turns. Steers for different sessions use different queues and run
+     * time, in arrival order, and can never race to inject into rival turns.
+     * Steers for different sessions use different queues and run
      * concurrently. Once the queue drains to idle it is removed from the map,
      * so no per-session entry leaks after the session goes quiet (the identity
      * check guards against deleting a queue a later request has since reused).
      *
      * @param params The target session id and the prompt to steer with.
-     * @returns Whether the prompt joined the active turn ("injected"), started a
-     *     new one ("startedNewTurn"), or could not be applied ("failed"); see
-     *     {@link performSteeringRequest}.
+     * @returns Whether the prompt joined the active turn or could not be applied.
      */
     async executeOrQueueSteeringRequest(params: SessionSteerRequest): Promise<SessionSteeringResponse> {
         const queue = this.getSteeringQueue(params.sessionId);
@@ -1418,12 +1402,10 @@ export class CodexAcpServer {
     }
 
     /**
-     * Delivers a steering prompt to the session: injects it into the live turn
-     * when there is one, otherwise starts a new turn.
+     * Delivers a steering prompt to the currently active turn.
      *
      * @param params The target session id and the prompt to steer with.
-     * @returns "injected" when the prompt joined an existing turn, otherwise the
-     *     outcome of starting a new turn.
+     * @returns "injected" when the prompt joined the active turn.
      */
     private async performSteeringRequest(params: SessionSteerRequest): Promise<SessionSteeringResponse> {
         logger.log("Steering session requested", {
@@ -1441,10 +1423,7 @@ export class CodexAcpServer {
                 return {outcome: "injected"};
             }
         }
-        if (params.steerId) {
-            throw RequestError.invalidRequest("No active Codex turn to steer");
-        }
-        return await this.startNewTurnFromSteering(params);
+        return {outcome: "failed"};
     }
 
     /**
@@ -1463,11 +1442,11 @@ export class CodexAcpServer {
      *
      * A failed injection is fatal only when the turn is still the session's
      * current turn and Codex reported something other than "no active turn to
-     * steer". Otherwise the turn has already ended underneath us and the caller
-     * should start a new turn instead.
+     * steer". Otherwise the turn has already ended underneath us and steering
+     * reports a failed delivery.
      *
-     * @returns true when the prompt was injected; false when the caller should
-     *     fall back to starting a new turn.
+     * @returns true when the prompt was injected; false when the target turn
+     *     already ended.
      */
     private async injectSteerIntoActiveTurn(
         params: SessionSteerRequest,
@@ -1476,38 +1455,32 @@ export class CodexAcpServer {
     ): Promise<boolean> {
         const activePrompt = this.activePrompts.get(params.sessionId);
         const activeTurn = activePrompt?.currentTurn;
-        if (params.steerId) {
-            const firstText = params.prompt[0]?.type === "text" ? params.prompt[0].text : "";
-            if (firstText.startsWith("/")) {
-                throw RequestError.invalidRequest("Slash commands cannot steer an active Codex turn");
-            }
-            if (
-                !activePrompt
-                || !activeTurn
-                || activeTurn.turnId !== turnId
-                || activePrompt.signal.aborted
-            ) {
-                return false;
-            }
+        const firstText = params.prompt[0]?.type === "text" ? params.prompt[0].text : "";
+        if (firstText.startsWith("/")) {
+            throw RequestError.invalidRequest("Slash commands cannot steer an active Codex turn");
+        }
+        if (
+            !activePrompt
+            || !activeTurn
+            || activeTurn.turnId !== turnId
+            || activePrompt.signal.aborted
+        ) {
+            return false;
         }
 
-        const pending = params.steerId
-            ? (this.pendingSteers.get(params.sessionId) ?? new Map<string, PendingSteer>())
-            : null;
-        if (params.steerId && activePrompt && pending) {
-            if (pending.has(params.steerId)) {
-                throw RequestError.invalidRequest(`Duplicate Codex steer id: ${params.steerId}`);
-            }
-            pending.set(params.steerId, {activePrompt, turnId});
-            this.pendingSteers.set(params.sessionId, pending);
+        const pending = this.pendingSteers.get(params.sessionId) ?? new Map<string, PendingSteer>();
+        if (pending.has(params.steerId)) {
+            throw RequestError.invalidRequest(`Duplicate Codex steer id: ${params.steerId}`);
         }
+        pending.set(params.steerId, {activePrompt, turnId});
+        this.pendingSteers.set(params.sessionId, pending);
 
         try {
             const response = await this.runWithProcessCheck(() => this.codexAcpClient.steerTurn({
-                threadId: params.steerId && activeTurn ? activeTurn.threadId : params.sessionId,
+                threadId: activeTurn.threadId,
                 turnId,
                 prompt: params.prompt,
-                ...(params.steerId ? {steerId: params.steerId} : {}),
+                steerId: params.steerId,
             }));
             if (response.turnId !== turnId) {
                 throw RequestError.internalError(
@@ -1517,7 +1490,7 @@ export class CodexAcpServer {
             }
             return true;
         } catch (err) {
-            if (params.steerId && activePrompt && pending?.get(params.steerId)?.activePrompt === activePrompt) {
+            if (pending.get(params.steerId)?.activePrompt === activePrompt) {
                 pending.delete(params.steerId);
                 if (pending.size === 0) this.pendingSteers.delete(params.sessionId);
             }
@@ -1528,23 +1501,6 @@ export class CodexAcpServer {
             }
             return false;
         }
-    }
-
-    /**
-     * Starts a new turn from a steering prompt when there is no live turn to
-     * inject into, and returns as soon as that turn is running.
-     *
-     * Waits for any previous prompt to drain first, then re-checks that the
-     * session is not closing — the await above is a window during which a close
-     * request can arrive.
-     *
-     * @param params The target session id and the prompt to steer with.
-     * @returns "startedNewTurn" once the turn is running; throws if the prompt
-     *     fails or is cancelled before the turn starts.
-     */
-    private async startNewTurnFromSteering(params: SessionSteerRequest): Promise<SessionSteeringResponse> {
-        await this.startNewTurnFromExternalPrompt(params, "Steering");
-        return {outcome: "startedNewTurn"};
     }
 
     private async startGoalContinuationIfCurrent(
@@ -1664,14 +1620,15 @@ export class CodexAcpServer {
         if (
             typeof sessionId !== "string"
             || !Array.isArray(prompt)
-            || (steerId !== undefined && (typeof steerId !== "string" || steerId.length === 0))
+            || typeof steerId !== "string"
+            || steerId.length === 0
         ) {
             throw RequestError.invalidParams();
         }
         return {
             sessionId: sessionId,
             prompt: prompt as acp.ContentBlock[],
-            ...(typeof steerId === "string" ? {steerId} : {}),
+            steerId,
         };
     }
 
@@ -1766,7 +1723,7 @@ export class CodexAcpServer {
         await session.update({
             sessionUpdate: "session_info_update",
             _meta: {
-                goal: snapshot,
+                lody: {goal: snapshot},
             },
         });
     }
@@ -1942,7 +1899,7 @@ export class CodexAcpServer {
                 sessionUpdate: "session_info_update",
                 title: explicitTitle,
                 _meta: {
-                    codex: {
+                    lody: {
                         titleSource: "explicit",
                     },
                 },
@@ -1981,7 +1938,7 @@ export class CodexAcpServer {
             sessionUpdate: "session_info_update",
             title,
             _meta: {
-                codex: {
+                lody: {
                     titleSource: "fallback",
                 },
             },

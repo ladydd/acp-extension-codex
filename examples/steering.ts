@@ -30,6 +30,11 @@
  */
 
 import * as acp from "@agentclientprotocol/sdk";
+import {
+    LODY_EXTENSION_METHODS,
+    type LodySteerRequest,
+    type LodySteerResponse,
+} from "acp-extension-core";
 import {type ChildProcess, spawn} from "node:child_process";
 import {fileURLToPath} from "node:url";
 import {mkdtemp, rm, writeFile} from "node:fs/promises";
@@ -37,7 +42,7 @@ import os from "node:os";
 import path from "node:path";
 import {Readable, Writable} from "node:stream";
 
-const STEERING_METHOD = "_session/steering";
+const STEERING_METHOD = LODY_EXTENSION_METHODS.sessionSteer;
 const EXAMPLE_TIMEOUT_MS = 60_000;
 const DEFAULT_EXAMPLE_MODEL = "gpt-5.6-sol";
 const exampleModel = process.env["STEERING_EXAMPLE_MODEL"] ?? DEFAULT_EXAMPLE_MODEL;
@@ -67,14 +72,8 @@ const steeringPrompt = [
     "Just tell me the notes you've collected so far and which clue number you stopped on.",
 ].join(" ");
 
-type SteeringRequest = {
-    sessionId: acp.SessionId;
-    prompt: acp.ContentBlock[];
-};
-
-type SteeringResponse = {
-    outcome: "injected" | "startedNewTurn";
-};
+type SteeringRequest = LodySteerRequest<acp.ContentBlock>;
+type SteeringResponse = LodySteerResponse;
 
 type ThreadStatusType = "active" | "idle" | "systemError";
 type StateListener = () => void;
@@ -124,8 +123,10 @@ function createAgentEnvironment(): NodeJS.ProcessEnv {
 }
 
 function supportsSteering(response: acp.InitializeResponse): boolean {
-    const steering = response._meta?.["steering"];
-    return isRecord(steering) && steering["supported"] === true;
+    const lody = response.agentCapabilities?._meta?.["lody"];
+    if (!isRecord(lody)) return false;
+    const steering = lody["steering"];
+    return isRecord(steering) && steering["version"] === 1;
 }
 
 function readThreadStatus(update: acp.SessionUpdate): ThreadStatusType | undefined {
@@ -413,16 +414,13 @@ async function main(): Promise<void> {
                     const steeringResponse = await agent.request<SteeringResponse, SteeringRequest>(STEERING_METHOD, {
                         sessionId: trackedSessionId,
                         prompt: [{type: "text", text: steeringPrompt}],
+                        steerId: "steering-example",
                     });
-                    if (steeringResponse.outcome !== "injected" && steeringResponse.outcome !== "startedNewTurn") {
+                    if (steeringResponse.outcome !== "injected") {
                         throw new Error(`Unexpected steering response: ${JSON.stringify(steeringResponse)}`);
                     }
                     writeEvent(c.magenta(c.bold(`   outcome: ${steeringResponse.outcome}`)));
-                    if (steeringResponse.outcome === "injected") {
-                        writeEvent(c.dim("   → injected into the running turn; the agent picks it up at its next step."));
-                    } else {
-                        writeEvent(c.dim("   → the turn had already ended, so this started a fresh turn."));
-                    }
+                    writeEvent(c.dim("   → injected into the running turn; the agent picks it up at its next step."));
                 }
 
                 const promptResponse = await promptPromise;

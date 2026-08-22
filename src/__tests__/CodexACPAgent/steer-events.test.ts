@@ -44,7 +44,7 @@ function startActiveTurn(sessionOverrides?: Partial<SessionState>) {
     return {mockFixture, sessionState, turnCompleted};
 }
 
-describe('_session/steering', () => {
+describe('_lody/session/steer', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -65,11 +65,13 @@ describe('_session/steering', () => {
         await expect(mockFixture.getCodexAcpAgent().extMethod(SESSION_STEERING_METHOD, {
             sessionId: "session-id",
             prompt: [{type: "text", text: "also keep backward compatibility"}],
+            steerId: "steer-active",
         })).resolves.toEqual({outcome: "injected"});
 
         expect(turnSteerSpy).toHaveBeenCalledWith({
             threadId: "session-id",
             expectedTurnId: "turn-id",
+            clientUserMessageId: "steer-active",
             input: [{type: "text", text: "also keep backward compatibility", text_elements: []}],
         });
 
@@ -80,7 +82,7 @@ describe('_session/steering', () => {
         await expect(promptPromise).resolves.toMatchObject({stopReason: "end_turn"});
     });
 
-    it('starts a new turn when no turn is active', async () => {
+    it('fails without starting a detached turn when no turn is active', async () => {
         const mockFixture = createCodexMockTestFixture();
         const sessionState = createTestSessionState();
         vi.spyOn(mockFixture.getCodexAcpAgent(), "getSessionState").mockReturnValue(sessionState);
@@ -93,23 +95,13 @@ describe('_session/steering', () => {
         await expect(mockFixture.getCodexAcpAgent().extMethod(SESSION_STEERING_METHOD, {
             sessionId: "session-id",
             prompt: [{type: "text", text: "too late for the previous turn"}],
-        })).resolves.toEqual({outcome: "startedNewTurn"});
+            steerId: "steer-idle",
+        })).resolves.toEqual({outcome: "failed"});
 
-        expect(turnStartSpy).toHaveBeenCalledWith(expect.objectContaining({
-            threadId: "session-id",
-            input: [{type: "text", text: "too late for the previous turn", text_elements: []}],
-        }));
-
-        turnCompleted.resolve({
-            threadId: "session-id",
-            turn: createTurn("new-turn-id", "completed"),
-        });
-        await vi.waitFor(() => {
-            expect(sessionState.currentTurnId).toBeNull();
-        });
+        expect(turnStartSpy).not.toHaveBeenCalled();
     });
 
-    it('starts a new turn when Codex reports that the tracked turn is no longer active', async () => {
+    it('fails when Codex reports that the tracked turn is no longer active', async () => {
         const {mockFixture, sessionState, turnCompleted} = startActiveTurn();
         const nextTurnCompleted = deferred<TurnCompletedNotification>();
         vi.spyOn(mockFixture.getCodexAppServerClient(), "turnStart")
@@ -139,20 +131,13 @@ describe('_session/steering', () => {
         await expect(mockFixture.getCodexAcpAgent().extMethod(SESSION_STEERING_METHOD, {
             sessionId: "session-id",
             prompt: [{type: "text", text: "racing follow-up"}],
-        })).resolves.toEqual({outcome: "startedNewTurn"});
+            steerId: "steer-race",
+        })).resolves.toEqual({outcome: "failed"});
         await expect(promptPromise).resolves.toMatchObject({stopReason: "end_turn"});
-        expect(sessionState.currentTurnId).toBe("new-turn-id");
-
-        nextTurnCompleted.resolve({
-            threadId: "session-id",
-            turn: createTurn("new-turn-id", "completed"),
-        });
-        await vi.waitFor(() => {
-            expect(sessionState.currentTurnId).toBeNull();
-        });
+        expect(sessionState.currentTurnId).toBeNull();
     });
 
-    it('serializes concurrent late steering requests without dropping either prompt', async () => {
+    it('rejects concurrent late steering requests without creating a turn', async () => {
         const mockFixture = createCodexMockTestFixture();
         const sessionState = createTestSessionState();
         vi.spyOn(mockFixture.getCodexAcpAgent(), "getSessionState").mockReturnValue(sessionState);
@@ -167,29 +152,19 @@ describe('_session/steering', () => {
         const firstRequest = mockFixture.getCodexAcpAgent().extMethod(SESSION_STEERING_METHOD, {
             sessionId: "session-id",
             prompt: [{type: "text", text: "first late follow-up"}],
+            steerId: "steer-late-1",
         });
         const secondRequest = mockFixture.getCodexAcpAgent().extMethod(SESSION_STEERING_METHOD, {
             sessionId: "session-id",
             prompt: [{type: "text", text: "second late follow-up"}],
+            steerId: "steer-late-2",
         });
 
         await expect(Promise.all([firstRequest, secondRequest])).resolves.toEqual([
-            {outcome: "startedNewTurn"},
-            {outcome: "injected"},
+            {outcome: "failed"},
+            {outcome: "failed"},
         ]);
-        expect(turnSteerSpy).toHaveBeenCalledWith({
-            threadId: "session-id",
-            expectedTurnId: "new-turn-id",
-            input: [{type: "text", text: "second late follow-up", text_elements: []}],
-        });
-
-        turnCompleted.resolve({
-            threadId: "session-id",
-            turn: createTurn("new-turn-id", "completed"),
-        });
-        await vi.waitFor(() => {
-            expect(sessionState.currentTurnId).toBeNull();
-        });
+        expect(turnSteerSpy).not.toHaveBeenCalled();
     });
 
     it('reports failed instead of throwing when steering hits an unexpected error', async () => {
@@ -201,6 +176,7 @@ describe('_session/steering', () => {
         await expect(mockFixture.getCodexAcpAgent().extMethod(SESSION_STEERING_METHOD, {
             sessionId: "session-id",
             prompt: [{type: "text", text: "keep the agent alive"}],
+            steerId: "steer-error",
         })).resolves.toEqual({outcome: "failed"});
     });
 
@@ -225,6 +201,7 @@ describe('_session/steering', () => {
         const error = await mockFixture.getCodexAcpAgent().extMethod(SESSION_STEERING_METHOD, {
             sessionId: "session-id",
             prompt: [image],
+            steerId: "steer-image",
         }).catch((err: unknown) => err);
 
         expect(error).toBeInstanceOf(RequestError);

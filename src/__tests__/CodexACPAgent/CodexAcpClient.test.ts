@@ -1844,15 +1844,16 @@ describe('ACP server test', { timeout: 40_000 }, () => {
                 update: {
                     sessionUpdate: "session_info_update",
                     _meta: {
-                        goal: {
-                            objective: "Ship the migration and keep tests green",
-                            status: "active",
-                            tokenBudget: null,
-                            tokensUsed: 0,
-                            timeUsedSeconds: 0,
-                            createdAt: 1710000000000,
-                            updatedAt: 1710000100000,
-                            controlMethod: "_session/goal",
+                        lody: {
+                            goal: {
+                                objective: "Ship the migration and keep tests green",
+                                status: "active",
+                                tokenBudget: null,
+                                tokensUsed: 0,
+                                timeUsedSeconds: 0,
+                                createdAtEpochSeconds: 1710000000,
+                                updatedAtEpochSeconds: 1710000100,
+                            },
                         },
                     },
                 },
@@ -2625,21 +2626,21 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             expect.objectContaining({
                 args: [expect.objectContaining({
                     update: expect.objectContaining({
-                        _meta: {goal: expect.objectContaining({status: "paused"})},
+                        _meta: {lody: {goal: expect.objectContaining({status: "paused"})}},
                     }),
                 })],
             }),
             expect.objectContaining({
                 args: [expect.objectContaining({
                     update: expect.objectContaining({
-                        _meta: {goal: expect.objectContaining({status: "active"})},
+                        _meta: {lody: {goal: expect.objectContaining({status: "active"})}},
                     }),
                 })],
             }),
             expect.objectContaining({
                 args: [expect.objectContaining({
                     update: expect.objectContaining({
-                        _meta: {goal: null},
+                        _meta: {lody: {goal: null}},
                     }),
                 })],
             }),
@@ -2857,14 +2858,19 @@ describe('ACP server test', { timeout: 40_000 }, () => {
         staleResponse.resolve(staleGoal);
         await stalePublish;
 
-        expect(sessionState.currentGoal).toMatchObject({objective: "current", createdAt: 200000});
+        expect(sessionState.currentGoal).toMatchObject({
+            objective: "current",
+            createdAtEpochSeconds: 200,
+        });
         const goalUpdates = mockFixture.getAcpConnectionEvents([]).filter(event =>
             event.method === "sessionUpdate"
             && event.args[0]?.update?.sessionUpdate === "session_info_update"
         );
         expect(goalUpdates).toHaveLength(1);
         expect(goalUpdates[0]?.args[0]?.update?._meta).toEqual({
-            goal: expect.objectContaining({objective: "current", createdAt: 200000}),
+            lody: {
+                goal: expect.objectContaining({objective: "current", createdAtEpochSeconds: 200}),
+            },
         });
     });
 
@@ -3871,17 +3877,22 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             args: [
                 ACP_EXT_SESSION_RATE_LIMITS_METHOD,
                 {
-                    schemaVersion: 2,
-                    planName: "plus",
-                    limitName: "Codex",
-                    limitId: "codex",
-                    windows: [
-                        { usedPercent: 29, resetsAt: 1784505071, windowDurationMins: 10080 },
+                    fetchedAtEpochSeconds: expect.any(Number),
+                    rateLimits: [
+                        {
+                            planName: "plus",
+                            limitName: "Codex",
+                            limitId: "codex",
+                            scope: {providerId: "codex"},
+                            windows: [
+                                {
+                                    usedPercent: 29,
+                                    resetsAtEpochSeconds: 1784505071,
+                                    windowDurationSeconds: 604800,
+                                },
+                            ],
+                        },
                     ],
-                    fiveHour: null,
-                    sevenDay: 29,
-                    fiveHourResetAt: null,
-                    sevenDayResetAt: 1784505071,
                 },
             ],
         });
@@ -3969,17 +3980,20 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             args: [
                 ACP_EXT_SESSION_RATE_LIMITS_METHOD,
                 {
-                    schemaVersion: 2,
-                    planName: null,
-                    limitName: "Standard",
-                    limitId: "standard-limit",
-                    windows: [
-                        { usedPercent: 30, resetsAt: 1784505071, windowDurationMins: 10080 },
+                    fetchedAtEpochSeconds: expect.any(Number),
+                    rateLimits: [
+                        {
+                            planName: null,
+                            limitName: "Standard",
+                            limitId: "standard-limit",
+                            scope: {providerId: "codex"},
+                            windows: [{
+                                usedPercent: 30,
+                                resetsAtEpochSeconds: 1784505071,
+                                windowDurationSeconds: 604800,
+                            }],
+                        },
                     ],
-                    fiveHour: null,
-                    sevenDay: 30,
-                    fiveHourResetAt: null,
-                    sevenDayResetAt: 1784505071,
                 },
             ],
         });
@@ -3988,17 +4002,20 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             args: [
                 ACP_EXT_SESSION_RATE_LIMITS_METHOD,
                 {
-                    schemaVersion: 2,
-                    planName: null,
-                    limitName: "Fast",
-                    limitId: "fast-limit",
-                    windows: [
-                        { usedPercent: 50, resetsAt: 1784100000, windowDurationMins: 300 },
+                    fetchedAtEpochSeconds: expect.any(Number),
+                    rateLimits: [
+                        {
+                            planName: null,
+                            limitName: "Fast",
+                            limitId: "fast-limit",
+                            scope: {providerId: "codex"},
+                            windows: [{
+                                usedPercent: 50,
+                                resetsAtEpochSeconds: 1784100000,
+                                windowDurationSeconds: 18000,
+                            }],
+                        },
                     ],
-                    fiveHour: 50,
-                    sevenDay: null,
-                    fiveHourResetAt: 1784100000,
-                    sevenDayResetAt: null,
                 },
             ],
         });
@@ -4064,18 +4081,27 @@ describe('ACP server test', { timeout: 40_000 }, () => {
             args: [
                 ACP_EXT_SESSION_RATE_LIMITS_METHOD,
                 {
-                    schemaVersion: 2,
-                    planName: "pro",
-                    limitName: "Codex",
-                    limitId: "codex",
-                    windows: [
-                        { usedPercent: 29, resetsAt: 1784505071, windowDurationMins: 10080 },
-                        { usedPercent: 11, resetsAt: 1784100000, windowDurationMins: 300 },
+                    fetchedAtEpochSeconds: expect.any(Number),
+                    rateLimits: [
+                        {
+                            planName: "pro",
+                            limitName: "Codex",
+                            limitId: "codex",
+                            scope: {providerId: "codex"},
+                            windows: [
+                                {
+                                    usedPercent: 29,
+                                    resetsAtEpochSeconds: 1784505071,
+                                    windowDurationSeconds: 604800,
+                                },
+                                {
+                                    usedPercent: 11,
+                                    resetsAtEpochSeconds: 1784100000,
+                                    windowDurationSeconds: 18000,
+                                },
+                            ],
+                        },
                     ],
-                    fiveHour: 11,
-                    sevenDay: 29,
-                    fiveHourResetAt: 1784100000,
-                    sevenDayResetAt: 1784505071,
                 },
             ],
         });

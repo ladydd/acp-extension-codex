@@ -12,10 +12,8 @@ import type {
 import {type PlanEntry, RequestError} from "@agentclientprotocol/sdk";
 import {ACPSessionConnection, type AcpClientConnection, type UpdateSessionEvent} from "./ACPSessionConnection";
 import {
-    ACP_EXT_CODEX_PROPOSED_PLAN_METHOD,
     ACP_EXT_SESSION_RATE_LIMITS_METHOD,
     ACP_EXT_SESSION_USAGE_UPDATE_METHOD,
-    type CodexProposedPlanExtNotification,
     type SessionRateLimitsExtNotification,
     type SessionUsageExtNotification,
 } from "./AcpExtensions";
@@ -41,7 +39,6 @@ import type {
     ThreadGoalClearedNotification,
     ThreadGoalUpdatedNotification,
     ThreadTokenUsageUpdatedNotification,
-    TurnCompletedNotification,
     Turn,
     TurnPlanUpdatedNotification,
     WarningNotification
@@ -83,6 +80,7 @@ import {
     createAgentTextThoughtChunk,
 } from "./ContentChunks";
 import {sameThreadGoalSnapshot, type ThreadGoalSnapshot, toThreadGoalSnapshot} from "./ThreadGoalSnapshot";
+import {toLodyRateLimit} from "./LodyRateLimits";
 import {logger} from "./Logger";
 import {randomUUID} from "node:crypto";
 import {
@@ -254,8 +252,6 @@ export class CodexEventHandler {
     private readonly reasoningSummaryFilters = new Map<string, ReasoningSummaryFilter>();
     private readonly terminalCommandIds = new Set<string>();
     private readonly terminalCommandOutputIds = new Set<string>();
-    private proposedPlanMarkdown = "";
-    private proposedPlanTurnId: string | null = null;
     private readonly agentMessagePhases = new Map<string, string | null>();
     private readonly activeSubAgentActivities = new Set<string>();
 
@@ -489,7 +485,7 @@ export class CodexEventHandler {
                     sessionUpdate: "session_info_update",
                     title: notification.params.threadName ?? null,
                     _meta: {
-                        codex: {
+                        lody: {
                             titleSource: this.sessionState.sessionTitleSource,
                         },
                     },
@@ -607,16 +603,6 @@ export class CodexEventHandler {
                     this.createSessionUsageExtNotification(notification.params)
                 );
                 return;
-            case "item/plan/delta":
-                if (!this.supportsPlanUpdates) {
-                    await this.emitCodexProposedPlanDelta(notification.params);
-                }
-                return;
-            case "turn/completed":
-                if (!this.supportsPlanUpdates) {
-                    await this.emitCodexProposedPlanCompleted(notification.params);
-                }
-                return;
             default:
                 return;
         }
@@ -630,80 +616,25 @@ export class CodexEventHandler {
     private createSessionUsageExtNotification(params: ThreadTokenUsageUpdatedNotification): SessionUsageExtNotification {
         const totalUsage = params.tokenUsage.total;
         return {
+            sessionId: this.sessionState.sessionId,
             usage: {
                 inputTokens: totalUsage.inputTokens,
                 outputTokens: totalUsage.outputTokens,
                 cacheReadInputTokens: totalUsage.cachedInputTokens,
                 reasoningOutputTokens: totalUsage.reasoningOutputTokens,
-                contextWindow: params.tokenUsage.modelContextWindow,
+                ...(params.tokenUsage.modelContextWindow === null
+                    ? {}
+                    : {contextWindow: params.tokenUsage.modelContextWindow}),
             },
-        };
-    }
-
-    private async emitCodexProposedPlanDelta(params: PlanDeltaNotification): Promise<void> {
-        this.proposedPlanMarkdown += params.delta;
-        this.proposedPlanTurnId = params.turnId;
-        await this.notifyExt(
-            ACP_EXT_CODEX_PROPOSED_PLAN_METHOD,
-            this.createCodexProposedPlanExtNotification(
-                params.turnId,
-                this.proposedPlanMarkdown,
-                "delta"
-            )
-        );
-    }
-
-    private async emitCodexProposedPlanCompleted(params: TurnCompletedNotification): Promise<void> {
-        if (this.proposedPlanMarkdown.trim().length === 0) {
-            return;
-        }
-        await this.notifyExt(
-            ACP_EXT_CODEX_PROPOSED_PLAN_METHOD,
-            this.createCodexProposedPlanExtNotification(
-                this.proposedPlanTurnId ?? params.turn.id,
-                this.proposedPlanMarkdown,
-                "completed"
-            )
-        );
-    }
-
-    private createCodexProposedPlanExtNotification(
-        turnId: string,
-        markdown: string,
-        status: CodexProposedPlanExtNotification["status"],
-    ): CodexProposedPlanExtNotification {
-        return {
-            schemaVersion: 1,
-            sessionId: this.sessionState.sessionId,
-            turnId,
-            markdown,
-            status,
-            isLatest: true,
         };
     }
 
     private createSessionRateLimitsExtNotification(
         rateLimits: RateLimitSnapshot
     ): SessionRateLimitsExtNotification {
-        const windows = [rateLimits.primary, rateLimits.secondary].filter(
-            (window): window is NonNullable<typeof window> => window !== null
-        );
-        const fiveHour = windows.find(window => window.windowDurationMins === 5 * 60) ?? null;
-        const sevenDay = windows.find(window => window.windowDurationMins === 7 * 24 * 60) ?? null;
         return {
-            schemaVersion: 2,
-            planName: rateLimits.planType,
-            limitName: rateLimits.limitName,
-            limitId: rateLimits.limitId,
-            windows: windows.map(window => ({
-                usedPercent: window.usedPercent,
-                windowDurationMins: window.windowDurationMins,
-                resetsAt: window.resetsAt,
-            })),
-            fiveHour: fiveHour?.usedPercent ?? null,
-            sevenDay: sevenDay?.usedPercent ?? null,
-            fiveHourResetAt: fiveHour?.resetsAt ?? null,
-            sevenDayResetAt: sevenDay?.resetsAt ?? null,
+            rateLimits: [toLodyRateLimit(rateLimits)],
+            fetchedAtEpochSeconds: Math.floor(Date.now() / 1000),
         };
     }
 
@@ -727,21 +658,25 @@ export class CodexEventHandler {
 
     private async createConfigWarningEvent(event: ConfigWarningNotification): Promise<UpdateSessionEvent> {
         const detailsText = event.details ? `\n\n${event.details}` : "";
-        return this.createCodexSessionInfoUpdate({
-            warning: {
+        return {
+            sessionUpdate: "session_info_update",
+            _meta: {lody: {notice: {
+                level: "warning",
                 message: `${event.summary}${detailsText}`,
                 source: "configWarning",
-            },
-        });
+            }}},
+        };
     }
 
     private createWarningEvent(event: WarningNotification): UpdateSessionEvent {
-        return this.createCodexSessionInfoUpdate({
-            warning: {
+        return {
+            sessionUpdate: "session_info_update",
+            _meta: {lody: {notice: {
+                level: "warning",
                 message: event.message,
                 source: "warning",
-            },
-        });
+            }}},
+        };
     }
 
     /**
@@ -784,7 +719,7 @@ export class CodexEventHandler {
     private createGoalSessionInfoUpdate(goal: ThreadGoalSnapshot | null): UpdateSessionEvent {
         return {
             sessionUpdate: "session_info_update",
-            _meta: {goal},
+            _meta: {lody: {goal}},
         };
     }
 

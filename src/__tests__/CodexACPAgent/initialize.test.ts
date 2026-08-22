@@ -6,6 +6,7 @@ import {getCodexAuthMethods} from "../../CodexAuthMethod";
 import {CodexAcpClient} from "../../CodexAcpClient";
 import {CodexAppServerClient} from "../../CodexAppServerClient";
 import packageJson from "../../../package.json";
+import {CODEX_LODY_CAPABILITIES} from "../../AcpExtensions";
 
 describe('CodexACPAgent - initialize', () => {
     let agent: CodexAcpServer;
@@ -61,36 +62,11 @@ describe('CodexACPAgent - initialize', () => {
                     sse: false,
                 },
                 _meta: {
-                    codex: {
-                        steer: {
-                            version: 1,
-                            method: "_session/steering",
-                            appliedNotification: "_codex/steerApplied",
-                            upstreamTurn: "same",
-                            configPolicy: "active",
-                        },
-                    },
-                    lody: {
-                        forkAtTurn: {
-                            version: 1,
-                        },
-                        readSessionHistory: {
-                            version: 1,
-                            method: "_lody/session/history/read",
-                        },
-                    },
+                    lody: CODEX_LODY_CAPABILITIES,
                 },
             },
             authMethods: getCodexAuthMethods(),
             _meta: {
-                steering: {
-                    supported: true,
-                },
-                goal: {
-                    version: 1,
-                    controlMethod: "_session/goal",
-                    actions: ["set", "pause", "resume", "clear"],
-                },
                 jetbrains: {
                     air: {
                         version: 1,

@@ -26,6 +26,16 @@
           "status": "inProgress"
         },
         "_meta": {
+          "lody": {
+            "task": {
+              "version": 1,
+              "taskId": "call-spawn-weather",
+              "kind": "subagent",
+              "status": "in_progress",
+              "description": "Find the current weather in Paris.",
+              "actor": "spawnAgent"
+            }
+          },
           "codex": {
             "collaboration": {
               "tool": "spawnAgent",
@@ -67,6 +77,16 @@
           "status": "completed"
         },
         "_meta": {
+          "lody": {
+            "task": {
+              "version": 1,
+              "taskId": "call-spawn-weather",
+              "kind": "subagent",
+              "status": "completed",
+              "description": "Find the current weather in Paris.",
+              "actor": "spawnAgent"
+            }
+          },
           "codex": {
             "collaboration": {
               "tool": "spawnAgent",

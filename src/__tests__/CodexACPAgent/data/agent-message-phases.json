@@ -11,11 +11,9 @@
           "text": "Checking the relevant event mapping."
         },
         "_meta": {
-          "codex": {
-            "phase": "commentary"
-          },
           "lody": {
-            "turnId": "turn-1"
+            "turnId": "turn-1",
+            "messagePhase": "commentary"
           }
         }
       }
@@ -35,11 +33,9 @@
           "text": "Yes, here is the answer."
         },
         "_meta": {
-          "codex": {
-            "phase": "final_answer"
-          },
           "lody": {
-            "turnId": "turn-1"
+            "turnId": "turn-1",
+            "messagePhase": "final_answer"
           }
         }
       }

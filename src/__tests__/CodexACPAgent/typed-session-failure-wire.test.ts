@@ -153,8 +153,9 @@ describe("typed session failures over ACP transport", () => {
             update: {
                 sessionUpdate: "session_info_update",
                 _meta: {
-                    codex: {
-                        warning: {
+                    lody: {
+                        notice: {
+                            level: "warning",
                             message:
                                 "Heads up: Long threads and multiple compactions can cause the model to be less accurate.",
                             source: "warning",
@@ -181,8 +182,9 @@ describe("typed session failures over ACP transport", () => {
         expect(fixture.updates[0]).toMatchObject({
             update: {
                 _meta: {
-                    codex: {
-                        warning: {
+                    lody: {
+                        notice: {
+                            level: "warning",
                             message: "Unknown key `foo`\n\nin ~/.codex/config.toml",
                             source: "configWarning",
                         },
@@ -246,7 +248,8 @@ describe("typed session failures over ACP transport", () => {
         await vi.waitFor(() => expect(fixture.updates).toHaveLength(1));
 
         expect(fixture.updates[0]!.update).toMatchObject({
-            _meta: {codex: {warning: {
+            _meta: {lody: {notice: {
+                level: "warning",
                 message: `Configuration requires attention\n\n${details}`,
                 source: "configWarning",
             }}},
@@ -265,7 +268,11 @@ describe("typed session failures over ACP transport", () => {
 
         expect(fixture.updates[0]!.update).toMatchObject({
             sessionUpdate: "session_info_update",
-            _meta: {codex: {warning: {message: "legacy advisory", source: "warning"}}},
+            _meta: {lody: {notice: {
+                level: "warning",
+                message: "legacy advisory",
+                source: "warning",
+            }}},
         });
         expect(JSON.stringify(fixture.updates)).not.toContain("agent_message_chunk");
     });
@@ -297,7 +304,11 @@ describe("typed session failures over ACP transport", () => {
             }}}},
         });
         expect(fixture.updates[1]!.update).toMatchObject({
-            _meta: {codex: {warning: {message: "unrelated advisory", source: "warning"}}},
+            _meta: {lody: {notice: {
+                level: "warning",
+                message: "unrelated advisory",
+                source: "warning",
+            }}},
         });
     });
 
@@ -314,8 +325,14 @@ describe("typed session failures over ACP transport", () => {
         await vi.waitFor(() => expect(fixture.updates).toHaveLength(2));
 
         expect(fixture.updates.map(update => update.update)).toEqual([
-            expect.objectContaining({_meta: {codex: {warning: {message: "Same warning", source: "warning"}}}}),
-            expect.objectContaining({_meta: {codex: {warning: {message: "Same warning", source: "warning"}}}}),
+            expect.objectContaining({_meta: {lody: {notice: expect.objectContaining({
+                message: "Same warning",
+                source: "warning",
+            })}}}),
+            expect.objectContaining({_meta: {lody: {notice: expect.objectContaining({
+                message: "Same warning",
+                source: "warning",
+            })}}}),
         ]);
     });
 
@@ -332,8 +349,8 @@ describe("typed session failures over ACP transport", () => {
         await vi.waitFor(() => expect(fixture.updates).toHaveLength(3));
 
         const warnings = fixture.updates.map(update => (update.update._meta as {
-            codex: {warning: {message: string}};
-        }).codex.warning.message);
+            lody: {notice: {message: string}};
+        }).lody.notice.message);
         expect(warnings).toEqual(["Recurring warning", "Different warning", "Recurring warning"]);
     });
 

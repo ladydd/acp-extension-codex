@@ -1170,14 +1170,14 @@ export class CodexAcpClient {
     async steerTurn(params: {
         threadId: string;
         turnId: string;
-        prompt: acp.ContentBlock[];
-        steerId?: string;
+        prompt: readonly acp.ContentBlock[];
+        steerId: string;
     }): Promise<TurnSteerResponse> {
         return await this.codexClient.turnSteer({
             threadId: params.threadId,
             expectedTurnId: params.turnId,
             input: buildPromptItems(params.prompt),
-            ...(params.steerId ? {clientUserMessageId: params.steerId} : {}),
+            clientUserMessageId: params.steerId,
         });
     }
 
@@ -1291,7 +1291,7 @@ export type SessionMetadataWithThread = SessionMetadata & {
     thread: Thread,
 }
 
-function buildPromptItems(prompt: acp.ContentBlock[]): UserInput[] {
+function buildPromptItems(prompt: readonly acp.ContentBlock[]): UserInput[] {
     return prompt.map((block): UserInput | null => {
         switch (block.type) {
             case "text":

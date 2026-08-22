@@ -18,6 +18,7 @@ import {
     clientSupportsFormElicitation,
     clientSupportsUrlElicitation,
 } from "./ElicitationCapabilities";
+import type {LodyElicitationMeta} from "acp-extension-core";
 
 // Standard elicitation options (non-tool-call approval).
 const ELICITATION_OPTIONS: acp.PermissionOption[] = [
@@ -39,6 +40,10 @@ type AcpBackedMcpElicitationParams = Extract<
 >;
 
 const USER_INPUT_OTHER_FIELD_SUFFIX = "__other";
+
+const lodyElicitationMeta = (meta: Omit<LodyElicitationMeta, "version">) => ({
+    lody: {elicitation: {version: 1 as const, ...meta}},
+});
 
 /**
  * Parses the `persist` field from the elicitation request `_meta`.
@@ -504,12 +509,7 @@ export class CodexElicitationHandler implements ElicitationHandler {
             const base = {
                 title: question.header || question.id,
                 description: question.question,
-                _meta: {
-                    codex: {
-                        isOther: question.isOther,
-                        isSecret: question.isSecret,
-                    },
-                },
+                _meta: lodyElicitationMeta({secret: question.isSecret}),
             };
             if (!hasOtherAnswer) {
                 required.push(question.id);
@@ -533,13 +533,10 @@ export class CodexElicitationHandler implements ElicitationHandler {
                     type: "string",
                     title: "Other",
                     description: "Type your own answer instead of choosing an option above.",
-                    _meta: {
-                        codex: {
-                            questionId: question.id,
-                            isOtherAnswer: true,
-                            isSecret: question.isSecret,
-                        },
-                    },
+                    _meta: lodyElicitationMeta({
+                        customAnswerFor: question.id,
+                        secret: question.isSecret,
+                    }),
                 };
             }
         }
@@ -557,11 +554,10 @@ export class CodexElicitationHandler implements ElicitationHandler {
                 properties,
                 required,
             },
-            _meta: {
-                codex: {
-                    autoResolutionMs: params.autoResolutionMs,
-                },
-            },
+            _meta: lodyElicitationMeta({
+                autoResolveAfterSeconds:
+                    params.autoResolutionMs === null ? null : params.autoResolutionMs / 1000,
+            }),
         };
     }
 
