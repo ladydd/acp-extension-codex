@@ -11,7 +11,6 @@
 - `src/__tests__/` — Vitest suite (behavior-focused tests around ACP/Codex events).
 - `src/app-server/` — generated Codex app-server API types (regenerate via `npm run generate-types`).
 - `dist/bin/` — release-ready single-file executables and `*.zip` archives.
-- `.github/workflows/ci.yml` — CI mirrors the local workflow: typecheck → tests → bundle.
 
 ## Coding Style & Naming Conventions
 
