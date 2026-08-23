@@ -4,6 +4,10 @@
     "access": "public"
   },
   "version": "1.6.2",
+  "lodyManagedRuntime": {
+    "name": "codex",
+    "compatibilityVersion": 1
+  },
   "description": "An ACP-compatible coding agent powered by Codex",
   "main": "dist/index.js",
   "bin": {
