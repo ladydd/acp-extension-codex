@@ -11,8 +11,27 @@ import {
     FAST_MODE_CONFIG_ID,
     FAST_MODE_OFF,
     FAST_MODE_ON,
+    FAST_SERVICE_TIER,
+    isFastServiceTier,
+    resolveFastServiceTier,
 } from "../../FastModeConfig";
 import {MODEL_CONFIG_ID} from "../../ModelConfigOption";
+
+describe("Fast service tier helpers", () => {
+    it("treats both priority and the legacy fast alias as Fast mode", () => {
+        expect(isFastServiceTier("priority")).toBe(true);
+        expect(isFastServiceTier("fast")).toBe(true);
+        expect(isFastServiceTier("flex")).toBe(false);
+        expect(isFastServiceTier(null)).toBe(false);
+        expect(isFastServiceTier(undefined)).toBe(false);
+    });
+
+    it("sends the catalog Fast id when Fast mode is enabled", () => {
+        expect(resolveFastServiceTier(true, true)).toBe(FAST_SERVICE_TIER);
+        expect(resolveFastServiceTier(true, false)).toBeNull();
+        expect(resolveFastServiceTier(false, true)).toBeNull();
+    });
+});
 
 describe("Fast mode session config", () => {
     const booleanConfigCapabilities: acp.ClientCapabilities = {
@@ -24,7 +43,7 @@ describe("Fast mode session config", () => {
     };
 
     async function createSession(
-        currentServiceTier: "fast" | "flex" | null = null,
+        currentServiceTier: "fast" | "flex" | "priority" | null = null,
         clientInfo: acp.Implementation | null = null,
         clientCapabilities?: acp.ClientCapabilities,
     ) {
@@ -101,6 +120,13 @@ describe("Fast mode session config", () => {
 
     it("initializes Fast mode as On when the app-server session tier is fast", async () => {
         const {response, codexAcpAgent} = await createSession("fast");
+
+        expect(response.configOptions).toContainEqual(createFastModeConfigOption(true));
+        expect(codexAcpAgent.getSessionState("session-id").fastModeEnabled).toBe(true);
+    });
+
+    it("initializes Fast mode as On when the app-server session tier is priority", async () => {
+        const {response, codexAcpAgent} = await createSession("priority");
 
         expect(response.configOptions).toContainEqual(createFastModeConfigOption(true));
         expect(codexAcpAgent.getSessionState("session-id").fastModeEnabled).toBe(true);
@@ -219,7 +245,7 @@ describe("Fast mode session config", () => {
         await codexAcpAgent.prompt({sessionId: "session-id", prompt: [{type: "text", text: "test"}]});
 
         expect(turnStartSpy).toHaveBeenCalledWith(expect.objectContaining({
-            serviceTier: "fast",
+            serviceTier: FAST_SERVICE_TIER,
         }));
     });
 

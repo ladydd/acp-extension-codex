@@ -1,6 +1,5 @@
 import type {SessionConfigOption} from "@agentclientprotocol/sdk";
 import type * as acp from "@agentclientprotocol/sdk";
-import type {ServiceTier} from "./app-server/ServiceTier";
 import type {Model} from "./app-server/v2";
 
 export const FAST_MODE_CONFIG_ID = "fast-mode";
@@ -8,14 +7,23 @@ export const FAST_MODE_CATEGORY = "model_config";
 export const FAST_MODE_ON = "on";
 export const FAST_MODE_OFF = "off";
 
+/** Catalog / request id Codex 0.148+ reports and accepts for Fast mode. */
+export const FAST_SERVICE_TIER = "priority";
+/** Legacy request value still accepted as an alias of Fast mode. */
+export const LEGACY_FAST_SERVICE_TIER = "fast";
+
 const FAST_MODE_DESCRIPTION = "1.5x speed, increased usage";
+
+export function isFastServiceTier(value: string | null | undefined): boolean {
+    return value === FAST_SERVICE_TIER || value === LEGACY_FAST_SERVICE_TIER;
+}
 
 export function modelSupportsFast(model: Model | undefined): boolean {
     return model?.additionalSpeedTiers?.includes("fast") ?? false;
 }
 
-export function resolveFastServiceTier(fastModeEnabled: boolean, currentModelSupportsFast: boolean): ServiceTier | null {
-    return fastModeEnabled && currentModelSupportsFast ? "fast" : null;
+export function resolveFastServiceTier(fastModeEnabled: boolean, currentModelSupportsFast: boolean): string | null {
+    return fastModeEnabled && currentModelSupportsFast ? FAST_SERVICE_TIER : null;
 }
 
 export function clientSupportsBooleanConfigOptions(clientCapabilities?: acp.ClientCapabilities | null): boolean {
