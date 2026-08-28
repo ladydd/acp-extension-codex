@@ -11,8 +11,38 @@ import {
     FAST_MODE_CONFIG_ID,
     FAST_MODE_OFF,
     FAST_MODE_ON,
+    modelSupportsFast,
 } from "../../FastModeConfig";
 import {MODEL_CONFIG_ID} from "../../ModelConfigOption";
+
+describe("modelSupportsFast", () => {
+    it("detects Fast from serviceTiers id priority or fast", () => {
+        expect(modelSupportsFast(createTestModel({
+            additionalSpeedTiers: [],
+            serviceTiers: [{id: "priority", name: "Fast", description: "1.5x speed, increased usage"}],
+        }))).toBe(true);
+        expect(modelSupportsFast(createTestModel({
+            additionalSpeedTiers: [],
+            serviceTiers: [{id: "fast", name: "Fast", description: "1.5x speed, increased usage"}],
+        }))).toBe(true);
+    });
+
+    it("falls back to additionalSpeedTiers when serviceTiers does not advertise Fast", () => {
+        expect(modelSupportsFast(createTestModel({
+            additionalSpeedTiers: ["fast"],
+            serviceTiers: [],
+        }))).toBe(true);
+        expect(modelSupportsFast(createTestModel({
+            additionalSpeedTiers: ["priority"],
+            serviceTiers: [],
+        }))).toBe(true);
+    });
+
+    it("returns false when neither catalog field advertises Fast", () => {
+        expect(modelSupportsFast(undefined)).toBe(false);
+        expect(modelSupportsFast(createTestModel())).toBe(false);
+    });
+});
 
 describe("Fast mode session config", () => {
     const booleanConfigCapabilities: acp.ClientCapabilities = {
@@ -104,6 +134,33 @@ describe("Fast mode session config", () => {
 
         expect(response.configOptions).toContainEqual(createFastModeConfigOption(true));
         expect(codexAcpAgent.getSessionState("session-id").fastModeEnabled).toBe(true);
+    });
+
+    it("advertises Fast mode when only serviceTiers lists priority", async () => {
+        const fixture = createCodexMockTestFixture();
+        const codexAcpAgent = fixture.getCodexAcpAgent();
+        const codexAcpClient = fixture.getCodexAcpClient();
+        const fastModel = createTestModel({
+            id: "fast-model",
+            additionalSpeedTiers: [],
+            serviceTiers: [{id: "priority", name: "Fast", description: "1.5x speed, increased usage"}],
+        });
+        vi.spyOn(codexAcpClient, "authRequired").mockResolvedValue(false);
+        vi.spyOn(codexAcpClient, "getAccount").mockResolvedValue({account: null, requiresOpenaiAuth: false});
+        vi.spyOn(codexAcpClient, "newSession").mockResolvedValue({
+            sessionId: "session-id",
+            currentModelId: "fast-model[medium]",
+            models: [fastModel],
+            collaborationMode: "default",
+            currentServiceTier: "fast",
+            additionalDirectories: [],
+        });
+        await codexAcpAgent.initialize({
+            protocolVersion: acp.PROTOCOL_VERSION,
+        });
+        const response = await codexAcpAgent.newSession({cwd: "/test/cwd", mcpServers: []});
+        expect(response.configOptions).toContainEqual(createFastModeConfigOption(true));
+        expect(codexAcpAgent.getSessionState("session-id").currentModelSupportsFast).toBe(true);
     });
 
     it("omits Fast mode config options for JetBrains 2026.1 IntelliJ clients", async () => {

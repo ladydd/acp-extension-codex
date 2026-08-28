@@ -11,7 +11,19 @@ export const FAST_MODE_OFF = "off";
 const FAST_MODE_DESCRIPTION = "1.5x speed, increased usage";
 
 export function modelSupportsFast(model: Model | undefined): boolean {
-    return model?.additionalSpeedTiers?.includes("fast") ?? false;
+    if (!model) {
+        return false;
+    }
+    if (
+        model.serviceTiers?.some((tier) => tier.id === "priority" || tier.id === "fast")
+    ) {
+        return true;
+    }
+    // Fallback: additionalSpeedTiers is deprecated in the 0.148 protocol.
+    return (
+        model.additionalSpeedTiers?.some((tier) => tier === "fast" || tier === "priority") ??
+        false
+    );
 }
 
 export function resolveFastServiceTier(fastModeEnabled: boolean, currentModelSupportsFast: boolean): ServiceTier | null {
