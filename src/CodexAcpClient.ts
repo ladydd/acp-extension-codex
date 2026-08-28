@@ -30,6 +30,7 @@ import path from "node:path";
 import {logger} from "./Logger";
 import {sanitizeMcpServerName} from "./McpServerName";
 import {getLodyForkTurnId} from "./AcpExtensions";
+import {escapeMarkdownLinkLabel} from "./markdown-link-label";
 import type {
     AccountLoginCompletedNotification,
     AccountUpdatedNotification,
@@ -1345,12 +1346,12 @@ function isSupportedImageUrl(uri: string | null | undefined): uri is string {
 
 function formatUriAsLink(name: string | null | undefined, uri: string): string {
     if (name && name.length > 0) {
-        return `[@${name}](${uri})`;
+        return `[@${escapeMarkdownLinkLabel(name)}](${uri})`;
     }
     if (uri.startsWith("file://")) {
         const path = uri.replace("file://", "");
         const fileName = path.split("/").pop() ?? path;
-        return `[@${fileName}](${uri})`;
+        return `[@${escapeMarkdownLinkLabel(fileName)}](${uri})`;
     }
     return uri;
 }

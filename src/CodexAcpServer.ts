@@ -48,6 +48,7 @@ import {
 } from "./ModelConfigOption";
 import type {TokenCount} from "./TokenCount";
 import {toPromptUsage} from "./TokenCount";
+import {escapeMarkdownLinkLabel} from "./markdown-link-label";
 import {CodexCommands, GOAL_CONTINUATION_PROMPT} from "./CodexCommands";
 import {SteeringQueue} from "./SteeringQueue";
 import type {QuotaMeta} from "./QuotaMeta";
@@ -2143,12 +2144,12 @@ export class CodexAcpServer {
 
     private formatUriAsLink(name: string | null, uri: string): string {
         if (name && name.length > 0) {
-            return `[@${name}](${uri})`;
+            return `[@${escapeMarkdownLinkLabel(name)}](${uri})`;
         }
         if (uri.startsWith("file://")) {
             const path = uri.replace("file://", "");
             const fileName = path.split("/").pop() ?? path;
-            return `[@${fileName}](${uri})`;
+            return `[@${escapeMarkdownLinkLabel(fileName)}](${uri})`;
         }
         return uri;
     }
